@@ -5,6 +5,7 @@ Source: `MaM-SZ/AIGC-Studio`, branch `master`.
 
 The three application services use Railway's native GitHub integration. Pushes to
 `master` build and deploy affected services; no GitHub Actions token is required.
+Each application's production environment has its own native repository trigger.
 All Docker build contexts are the repository root. Build and deployment settings
 are stored on the Railway services (no deprecated `railway.toml` configuration).
 
