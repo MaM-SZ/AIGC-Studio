@@ -16,6 +16,7 @@ type UploadObjectInput = {
 export function isObjectStorageReady(config: ObjectStorageConfig) {
     if (!config.accessKey.trim() || !config.secretKey.trim() || !config.bucket.trim() || !config.region.trim()) return false;
     if (config.provider === "aliyunOss") return Boolean(config.endpoint.trim());
+    if (config.provider === "railwayS3") return Boolean(config.endpoint.trim() && config.publicBaseUrl.trim());
     return config.provider !== "qiniuKodo" || Boolean(config.publicBaseUrl.trim());
 }
 
@@ -45,6 +46,7 @@ export async function testObjectStorageUpload(config: ObjectStorageConfig) {
 }
 
 export function buildObjectStoragePublicUrl(config: ObjectStorageConfig, key: string) {
+    if (config.provider === "railwayS3") throw new Error(translate("storage.railwayUseServerMediaUrl"));
     const baseUrl = config.publicBaseUrl.trim().replace(/\/+$/, "");
     const path = key
         .split("/")
@@ -65,6 +67,7 @@ export function objectStorageReadyMessage(config?: ObjectStorageConfig) {
         return translate("storage.enterAccessKeySecretKeyBucketAndRegion");
     }
     if (config.provider === "aliyunOss" && !config.endpoint.trim()) return translate("storage.enterAlibabaCloudOSSEndpoint");
+    if (config.provider === "railwayS3" && (!config.endpoint.trim() || !config.publicBaseUrl.trim())) return translate("storage.enterRailwayEndpointAndAppUrl");
     if (config.provider === "qiniuKodo" && !config.publicBaseUrl.trim()) return translate("storage.enterQiniuKodoPublicURL");
     return translate("storage.incompleteObjectStorageConfiguration");
 }

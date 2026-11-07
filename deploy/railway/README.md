@@ -70,6 +70,40 @@ payment merchant credentials are not supplied by this deployment. Email health
 checks are disabled while SMTP is unconfigured; database and Redis health checks
 remain active.
 
+## Media storage
+
+New uploads and generated media use Railway Storage Buckets. The production
+bucket `aigc-media` is in `sjc`, near the API's `us-west2` region. Existing media
+remains in Aliyun OSS; retain its storage configuration and credentials so old
+files, signed downloads, and cleanup continue to work.
+
+The application's `railwayS3` provider uses the bucket's S3 credentials, actual
+bucket name, endpoint, and signing region from its Credentials tab. The
+**Application URL** field must contain the public application origin, not the S3
+endpoint. Keys are encrypted using the existing server configuration encryption.
+Use virtual-hosted Railway buckets; legacy path-style buckets are not supported.
+
+Railway buckets are private. Saved media URLs contain an object-specific read
+capability; the application validates it before redirecting to a five-minute S3
+GET URL. This keeps saved generation records and model references usable after
+temporary signatures expire. Treat these media links like the existing public
+OSS media links. The cloud file manager uses the normal authenticated ownership
+checks when issuing preview and attachment URLs. Rotating bucket credentials
+invalidates previously issued stable capability links.
+
+Allow the public application origin in the bucket's CORS configuration for GET
+and HEAD, including the response headers needed for image editing and video
+playback. Do not publish bucket credentials to the browser.
+
+Before switching the default, test upload, preview, download, and byte-range
+reads against the running API. Set the new provider as default only after those
+checks pass. Reverting the default to OSS affects new files only; retain the
+Railway configuration for files already saved there.
+
+Railway currently charges $0.015/GB-month for bucket storage. Bucket reads and
+API operations are free; service uploads still count as service egress. Buckets
+use the public network, not Railway's private service network.
+
 For database migrations, keep `FLYWAY_MIGRATION_LOCATION` set to
 `classpath:db/migration-community` for the new database. Never point an existing
 database at a different Flyway history.

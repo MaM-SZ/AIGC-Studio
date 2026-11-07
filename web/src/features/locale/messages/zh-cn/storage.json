@@ -112,5 +112,10 @@
     "fileSort_newest": "存储时间：最新",
     "fileSort_oldest": "存储时间：最早",
     "fileSort_largest": "文件大小：最大",
-    "fileSort_smallest": "文件大小：最小"
+    "fileSort_smallest": "文件大小：最小",
+    "railwayUseServerMediaUrl": "Railway 私有存储请使用服务器返回的媒体访问地址",
+    "enterRailwayEndpointAndAppUrl": "请填写 Railway Endpoint 和应用访问地址",
+    "railwayApplicationUrlHint": "填写本站完整访问地址，例如 https://studio.example.com。文件链接由应用验证后跳转至临时读取地址。",
+    "railwayEndpointHint": "填写 Railway 存储桶 Credentials 中的 Endpoint。",
+    "railwayApplicationUrl": "应用访问地址"
 }
