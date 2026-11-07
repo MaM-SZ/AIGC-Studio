@@ -20,7 +20,9 @@ class RailwayMediaAccessTest {
         Class<?> type = assertDoesNotThrow(() -> Class.forName("com.novanovastudio.controller.RailwayMediaController"));
         Object controller = assertDoesNotThrow(() -> type.getConstructor(PersistenceService.class, ObjectStorageService.class)
                 .newInstance(persistence, storage));
-        return WebTestClient.bindToController(controller).webFilter(new com.novanovastudio.security.TokenAuthenticationWebFilter(
+        return WebTestClient.bindToController(controller)
+                .controllerAdvice(new com.novanovastudio.common.GlobalExceptionHandler())
+                .webFilter(new com.novanovastudio.security.TokenAuthenticationWebFilter(
                 new com.novanovastudio.security.TokenService(new com.novanovastudio.config.NovanovaProperties()),
                 mock(com.novanovastudio.repository.UserRepository.class))).build();
     }
