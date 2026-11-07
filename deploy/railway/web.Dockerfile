@@ -3,7 +3,7 @@ WORKDIR /app/web
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV COREPACK_NPM_REGISTRY=https://registry.npmjs.org
 ARG NEXT_PUBLIC_APP_VERSION=dev
-ARG NEXT_PUBLIC_GITHUB_URL=https://github.com/kent0113/AIGC-Studio
+ARG NEXT_PUBLIC_GITHUB_URL=https://github.com/MaM-SZ/AIGC-Studio
 ENV NEXT_PUBLIC_GITHUB_URL=${NEXT_PUBLIC_GITHUB_URL}
 # Keep browser API calls on the public gateway's origin.
 ENV NEXT_PUBLIC_SERVER_URL=""
@@ -31,7 +31,7 @@ COPY --from=builder /app/web/.next/standalone ./
 COPY --from=builder /app/web/.next/static ./.next/static
 COPY --from=builder /app/docs /app/docs
 ARG RAILWAY_GIT_COMMIT_SHA=unknown
-LABEL org.opencontainers.image.source="https://github.com/kent0113/AIGC-Studio" \
+LABEL org.opencontainers.image.source="https://github.com/MaM-SZ/AIGC-Studio" \
       org.opencontainers.image.revision=${RAILWAY_GIT_COMMIT_SHA}
 EXPOSE 5550
 CMD ["node", "server.js"]

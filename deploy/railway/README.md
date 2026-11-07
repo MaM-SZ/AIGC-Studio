@@ -1,7 +1,7 @@
 # Railway deployment
 
 Target: project `84390521-4312-4cca-9b2d-1bc7e1dc829d`, production environment.
-Source: `kent0113/AIGC-Studio`, branch `master`.
+Source: `MaM-SZ/AIGC-Studio`, branch `master`.
 
 The three application services use Railway's native GitHub integration. Pushes to
 `master` build and deploy affected services; no GitHub Actions token is required.
