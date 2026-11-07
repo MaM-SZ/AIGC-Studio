@@ -129,8 +129,8 @@ public class RailwayStorageProviderAdapter implements ObjectStorageProviderAdapt
     /** Stable bearer link grants read access to this one object, like existing public media URLs. */
     public static String mediaUrl(PersistenceDtos.ObjectStorageConfig config, String key) {
         return UriComponentsBuilder.fromUriString(config.publicBaseUrl().trim().replaceAll("/+$", "") + MEDIA_PATH)
-                .queryParam("storageId", config.id()).queryParam("key", key).queryParam("signature", signature(config, key))
-                .build().encode().toUriString();
+                .queryParam("storageId", "{storageId}").queryParam("key", "{key}").queryParam("signature", "{signature}")
+                .encode().buildAndExpand(java.util.Map.of("storageId", config.id(), "key", key, "signature", signature(config, key))).toUriString();
     }
 
     public static boolean validSignature(PersistenceDtos.ObjectStorageConfig config, String key, String supplied) {

@@ -28,9 +28,9 @@ class RailwayMediaAccessTest {
     @Test
     void stableMediaLinkRedirectsToFreshSignature() {
         when(persistence.getObjectStorageForCleanup("s1")).thenReturn(Mono.just(config));
-        when(storage.createReadUrl(eq(config), eq("images/a b.png"), anyString(), isNull(), eq(false), any()))
+        when(storage.createReadUrl(eq(config), eq("images/a+b & 中文.png"), anyString(), isNull(), eq(false), any()))
                 .thenReturn("https://bucket.t3.storageapi.dev/images/a.png?X-Amz-Signature=fresh");
-        String url = RailwayStorageProviderAdapter.mediaUrl(config, "images/a b.png");
+        String url = RailwayStorageProviderAdapter.mediaUrl(config, "images/a+b & 中文.png");
         client().get().uri(URI.create(url)).exchange().expectStatus().isFound()
                 .expectHeader().valueEquals("Location", "https://bucket.t3.storageapi.dev/images/a.png?X-Amz-Signature=fresh");
     }
