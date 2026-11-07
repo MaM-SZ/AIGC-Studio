@@ -30,5 +30,8 @@ COPY --from=builder /app/web/public ./public
 COPY --from=builder /app/web/.next/standalone ./
 COPY --from=builder /app/web/.next/static ./.next/static
 COPY --from=builder /app/docs /app/docs
+ARG RAILWAY_GIT_COMMIT_SHA=unknown
+LABEL org.opencontainers.image.source="https://github.com/kent0113/AIGC-Studio" \
+      org.opencontainers.image.revision=${RAILWAY_GIT_COMMIT_SHA}
 EXPOSE 5550
 CMD ["node", "server.js"]
