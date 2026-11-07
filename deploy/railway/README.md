@@ -1,10 +1,10 @@
 # Railway deployment
 
 Target: project `84390521-4312-4cca-9b2d-1bc7e1dc829d`, production environment.
-Source: `MaM-SZ/AIGC-Studio`, branch `codex/railway-deployment`.
+Source: `MaM-SZ/AIGC-Studio`, branch `dev`.
 
 The three application services use Railway's native GitHub integration. Pushes to
-`codex/railway-deployment` build and deploy affected services; no GitHub Actions token is required.
+`dev` build and deploy affected services; no GitHub Actions token is required.
 Each application's production environment has its own native repository trigger.
 All Docker build contexts are the repository root. Build and deployment settings
 are stored on the Railway services (no deprecated `railway.toml` configuration).
