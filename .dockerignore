@@ -1,4 +1,3 @@
-# Railway builds all application images from this repository root.
 .git
 .idea
 docs2
