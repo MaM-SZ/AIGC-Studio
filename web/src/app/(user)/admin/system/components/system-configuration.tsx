@@ -179,7 +179,7 @@ const createApiFormatOptions = (translator: typeof translate = translate): Array
 ];
 
 const createObjectStorageProviderOptions = (translator: typeof translate = translate): Array<{ label: string; value: ObjectStorageProvider }> => [
-    { label: "Railway Storage (S3)", value: "railwayS3" },
+    { label: "S3", value: "railwayS3" },
     {
         get label() {
             return translator("appShell.tencentCloudCOS");
@@ -245,10 +245,10 @@ const createObjectStorageProviderFields = (
     railwayS3: {
         accessKeyLabel: "Access Key ID",
         secretKeyLabel: "Secret Access Key",
-        bucketPlaceholder: "aigc-media-xxxxxxxx",
+        bucketPlaceholder: "example-bucket",
         regionLabel: "Region",
-        regionPlaceholder: "auto",
-        get publicBaseUrlExtra() { return translator("storage.railwayApplicationUrlHint"); },
+        regionPlaceholder: "us-east-1 / auto",
+        get publicBaseUrlExtra() { return translator("storage.s3ApplicationUrlHint"); },
     },
     tencentCos: {
         accessKeyLabel: "SecretId",
@@ -1416,8 +1416,8 @@ export function SystemConfiguration() {
                                                                             accessKey: "",
                                                                             secretKey: "",
                                                                             bucket: "",
-                                                                            region: provider === "railwayS3" ? "auto" : "",
-                                                                            endpoint: provider === "railwayS3" ? "https://t3.storageapi.dev" : "",
+                                                                            region: "",
+                                                                            endpoint: "",
                                                                             publicBaseUrl: provider === "railwayS3" ? window.location.origin : "",
                                                                             lastTestedAt: "",
                                                                         })
@@ -1455,16 +1455,16 @@ export function SystemConfiguration() {
                                                                 )}
                                                             </Form.Item>
                                                             {storage.provider === "aliyunOss" || storage.provider === "railwayS3" ? (
-                                                                <Form.Item label="Endpoint" extra={storage.provider === "railwayS3" ? translate("storage.railwayEndpointHint") : translate("appShell.enterAnOSSEndpointIncludingHttpOrHttps")} className="mb-0 md:col-span-2">
+                                                                <Form.Item label="Endpoint" extra={storage.provider === "railwayS3" ? translate("storage.s3EndpointHint") : translate("appShell.enterAnOSSEndpointIncludingHttpOrHttps")} className="mb-0 md:col-span-2">
                                                                     <Input
                                                                         value={storage.endpoint}
-                                                                        placeholder={storage.provider === "railwayS3" ? "https://t3.storageapi.dev" : "https://oss-cn-hangzhou.aliyuncs.com"}
+                                                                        placeholder={storage.provider === "railwayS3" ? "https://s3.example.com" : "https://oss-cn-hangzhou.aliyuncs.com"}
                                                                         disabled={isSaving}
                                                                         onChange={(event) => updateDraftObjectStorage(storage.id, { endpoint: event.target.value })}
                                                                     />
                                                                 </Form.Item>
                                                             ) : null}
-                                                            <Form.Item label={translate(storage.provider === "railwayS3" ? "storage.railwayApplicationUrl" : "appShell.publicURL")} required={storage.provider === "qiniuKodo" || storage.provider === "railwayS3"} extra={providerFields.publicBaseUrlExtra} className="mb-0 md:col-span-2">
+                                                            <Form.Item label={translate(storage.provider === "railwayS3" ? "storage.s3ApplicationUrl" : "appShell.publicURL")} required={storage.provider === "qiniuKodo" || storage.provider === "railwayS3"} extra={providerFields.publicBaseUrlExtra} className="mb-0 md:col-span-2">
                                                                 <Input
                                                                     value={storage.publicBaseUrl}
                                                                     placeholder="https://cdn.example.com"

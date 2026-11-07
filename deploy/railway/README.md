@@ -77,11 +77,13 @@ bucket `aigc-media` is in `sjc`, near the API's `us-west2` region. Existing medi
 remains in Aliyun OSS; retain its storage configuration and credentials so old
 files, signed downloads, and cleanup continue to work.
 
-The application's `railwayS3` provider uses the bucket's S3 credentials, actual
+The provider is displayed as **S3** in the application and uses the bucket's S3 credentials, actual
 bucket name, endpoint, and signing region from its Credentials tab. The
 **Application URL** field must contain the public application origin, not the S3
 endpoint. Keys are encrypted using the existing server configuration encryption.
-Use virtual-hosted Railway buckets; legacy path-style buckets are not supported.
+Use virtual-hosted buckets; path-style buckets are not supported. Enter the
+endpoint and signing region supplied by your S3 storage service. The internal
+`railwayS3` identifier is retained for existing configuration and media compatibility.
 
 Railway buckets are private. Saved media URLs contain an object-specific read
 capability; the application validates it before redirecting to a five-minute S3

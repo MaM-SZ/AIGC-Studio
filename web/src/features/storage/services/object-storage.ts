@@ -46,7 +46,7 @@ export async function testObjectStorageUpload(config: ObjectStorageConfig) {
 }
 
 export function buildObjectStoragePublicUrl(config: ObjectStorageConfig, key: string) {
-    if (config.provider === "railwayS3") throw new Error(translate("storage.railwayUseServerMediaUrl"));
+    if (config.provider === "railwayS3") throw new Error(translate("storage.s3UseServerMediaUrl"));
     const baseUrl = config.publicBaseUrl.trim().replace(/\/+$/, "");
     const path = key
         .split("/")
@@ -67,7 +67,7 @@ export function objectStorageReadyMessage(config?: ObjectStorageConfig) {
         return translate("storage.enterAccessKeySecretKeyBucketAndRegion");
     }
     if (config.provider === "aliyunOss" && !config.endpoint.trim()) return translate("storage.enterAlibabaCloudOSSEndpoint");
-    if (config.provider === "railwayS3" && (!config.endpoint.trim() || !config.publicBaseUrl.trim())) return translate("storage.enterRailwayEndpointAndAppUrl");
+    if (config.provider === "railwayS3" && (!config.endpoint.trim() || !config.publicBaseUrl.trim())) return translate("storage.enterS3EndpointAndAppUrl");
     if (config.provider === "qiniuKodo" && !config.publicBaseUrl.trim()) return translate("storage.enterQiniuKodoPublicURL");
     return translate("storage.incompleteObjectStorageConfiguration");
 }

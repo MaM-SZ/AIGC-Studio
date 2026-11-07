@@ -113,9 +113,9 @@
     "fileSort_oldest": "Stored: oldest",
     "fileSort_largest": "Size: largest",
     "fileSort_smallest": "Size: smallest",
-    "railwayUseServerMediaUrl": "Use the server-provided media URL for private Railway storage",
-    "enterRailwayEndpointAndAppUrl": "Enter the Railway endpoint and application URL",
-    "railwayApplicationUrlHint": "Enter this application’s public URL, such as https://studio.example.com. The app validates file links and redirects to temporary read URLs.",
-    "railwayEndpointHint": "Use the Endpoint from the Railway bucket Credentials tab.",
-    "railwayApplicationUrl": "Application URL"
+    "s3UseServerMediaUrl": "Use the server-provided media URL for private S3 storage",
+    "enterS3EndpointAndAppUrl": "Enter the S3 endpoint and application URL",
+    "s3ApplicationUrlHint": "Enter this application’s public URL, such as https://studio.example.com. The app validates file links and redirects to temporary read URLs.",
+    "s3EndpointHint": "Enter your storage provider’s S3-compatible endpoint (virtual-hosted addressing).",
+    "s3ApplicationUrl": "Application URL"
 }

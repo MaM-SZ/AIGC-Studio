@@ -43,7 +43,7 @@ public class RailwayStorageProviderAdapter implements ObjectStorageProviderAdapt
         if (!StringUtils.hasText(config.accessKey()) || !StringUtils.hasText(config.secretKey())
                 || !StringUtils.hasText(config.bucket()) || !StringUtils.hasText(config.region())
                 || !StringUtils.hasText(config.id())) {
-            throw new BusinessException(ErrorCode.PARAM_INVALID, "Railway 存储需要 Access Key、Secret Key、Bucket、Region 和存储标识");
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "S3 存储需要 Access Key、Secret Key、Bucket、Region 和存储标识");
         }
         requireHttpUrl(config.endpoint());
         requireHttpUrl(config.publicBaseUrl());
@@ -55,7 +55,7 @@ public class RailwayStorageProviderAdapter implements ObjectStorageProviderAdapt
             if (!java.util.Set.of("http", "https").contains(uri.getScheme()) || uri.getHost() == null
                     || uri.getUserInfo() != null || uri.getRawQuery() != null || uri.getFragment() != null) throw new IllegalArgumentException();
         } catch (Exception error) {
-            throw new BusinessException(ErrorCode.PARAM_INVALID, "Railway 存储 Endpoint 和应用访问地址必须是 HTTP(S) 地址");
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "S3 存储 Endpoint 和应用访问地址必须是 HTTP(S) 地址");
         }
     }
 
@@ -100,7 +100,7 @@ public class RailwayStorageProviderAdapter implements ObjectStorageProviderAdapt
         try (S3Client client = client(config); InputStream source = client.getObject(GetObjectRequest.builder().bucket(config.bucket()).key(key).build())) {
             java.nio.file.Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } catch (java.io.IOException error) {
-            throw new BusinessException(ErrorCode.THIRD_PARTY_CALL_ERROR, "Railway 私有文件下载失败");
+            throw new BusinessException(ErrorCode.THIRD_PARTY_CALL_ERROR, "S3 私有文件下载失败");
         }
     }
 
