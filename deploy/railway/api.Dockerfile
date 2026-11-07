@@ -17,7 +17,7 @@ COPY --from=builder /app/target/server-0.0.1-SNAPSHOT.jar /app/server.jar
 # Compose mounts these files; Railway needs them inside the image.
 COPY server/config/prompts ./server/config/prompts
 ARG RAILWAY_GIT_COMMIT_SHA=unknown
-LABEL org.opencontainers.image.source="https://github.com/kent0113/AIGC-Studio" \
+LABEL org.opencontainers.image.source="https://github.com/MaM-SZ/AIGC-Studio" \
       org.opencontainers.image.revision=${RAILWAY_GIT_COMMIT_SHA}
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/server.jar"]
