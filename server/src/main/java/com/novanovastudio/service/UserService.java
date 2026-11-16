@@ -108,7 +108,7 @@ public class UserService {
     private static final SecureRandom secureRandom = new SecureRandom();
 
     /** 邮件品牌名称 */
-    private static final String MAIL_BRAND_NAME = "Novanova Studio";
+    private static final String MAIL_BRAND_NAME = "Dream Builder";
 
     /** 邮件品牌图标地址，邮件客户端不渲染SVG，必须指向公网可访问的位图 */
     private static final String MAIL_BRAND_LOGO_URL = "https://dreambuilder.art/logo/novanovastudio-108x108.png";

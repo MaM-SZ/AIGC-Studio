@@ -30,9 +30,9 @@ import reactor.core.scheduler.Schedulers;
 @Slf4j
 public class TeamInvitationMailService {
     /** 邮件品牌名称，与密码重置邮件保持一致。 */
-    private static final String MAIL_BRAND_NAME = "Novanova Studio";
+    private static final String MAIL_BRAND_NAME = "Dream Builder";
     /** 邮件品牌图标地址，与密码重置邮件保持一致。 */
-    private static final String MAIL_BRAND_LOGO_URL = "https://www.novanovastudio.cn/logo/novanovastudio-108x108.png";
+    private static final String MAIL_BRAND_LOGO_URL = "https://dreambuilder.art/logo/novanovastudio-108x108.png";
     /** 邀请有效期天数，与 team_invitations.expires_at 的 7 天保持一致。 */
     public static final int INVITATION_VALID_DAYS = 7;
 
