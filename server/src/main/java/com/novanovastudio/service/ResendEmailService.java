@@ -10,6 +10,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
@@ -24,6 +25,7 @@ public class ResendEmailService {
     private final HttpClient httpClient;
     private final URI endpoint;
 
+    @Autowired
     public ResendEmailService(NovanovaProperties properties, ObjectMapper objectMapper) {
         this(properties, objectMapper,
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(),
