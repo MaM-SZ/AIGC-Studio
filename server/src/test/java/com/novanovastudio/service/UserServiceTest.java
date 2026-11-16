@@ -154,8 +154,8 @@ class UserServiceTest {
     void shouldSendPasswordResetEmailForNormalUser() {
         TestContext context = testContext();
         User user = normalUser(8L);
-        context.properties.getApp().setFrontendBaseUrl("https://www.novanovastudio.cn");
-        context.properties.getEmail().setFrom("noreply@novanovastudio.cn");
+        context.properties.getApp().setFrontendBaseUrl("https://dreambuilder.art");
+        context.properties.getEmail().setFrom("noreply@dreambuilder.art");
         when(context.userRepository.findByEmail("user@example.com")).thenReturn(Mono.just(user));
         when(context.userRepository.upsertPasswordResetToken(argThat(token -> token.getUserId().equals(8L)
                 && token.getTokenHash().length() == 64))).thenReturn(Mono.empty());
@@ -726,17 +726,18 @@ class UserServiceTest {
         CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
         PasswordLoginLockService passwordLoginLockService = mock(PasswordLoginLockService.class);
         NovanovaProperties properties = new NovanovaProperties();
-        properties.getApp().setFrontendBaseUrl("https://www.novanovastudio.cn");
-        properties.getEmail().setFrom("noreply@novanovastudio.cn");
+        properties.getApp().setFrontendBaseUrl("https://dreambuilder.art");
+        properties.getEmail().setFrom("noreply@dreambuilder.art");
         properties.getEmail().setAllowedSuffixes("example.com");
         JavaMailSender mailSender = mock(JavaMailSender.class);
+        ResendEmailService resendEmailService = mock(ResendEmailService.class);
         CreditService creditService = mock(CreditService.class);
         InvitationService invitationService = mock(InvitationService.class);
         AiTaskEventPublisher eventPublisher = mock(AiTaskEventPublisher.class);
         TransactionalOperator transactionalOperator = mock(TransactionalOperator.class);
         when(transactionalOperator.transactional(org.mockito.ArgumentMatchers.<Mono<Object>>any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        UserService service = new UserService(userRepository, passwordEncoder, tokenService, currentUserProvider, passwordLoginLockService, properties, new EmailRegistrationPolicy(properties), mailSender, creditService, invitationService, eventPublisher, transactionalOperator);
+        UserService service = new UserService(userRepository, passwordEncoder, tokenService, currentUserProvider, passwordLoginLockService, properties, new EmailRegistrationPolicy(properties), mailSender, resendEmailService, creditService, invitationService, eventPublisher, transactionalOperator);
         return new TestContext(service, userRepository, passwordEncoder, tokenService, currentUserProvider, passwordLoginLockService, properties, mailSender, creditService, invitationService, eventPublisher);
     }
 

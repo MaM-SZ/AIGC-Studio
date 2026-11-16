@@ -216,7 +216,7 @@ novanova:
     return-url: ${ALIPAY_RETURN_URL:}
   cors:
     # 允许跨域请求的来源地址模式（逗号分隔）
-    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:5555,http://127.0.0.1:5555,https://www.novanovastudio.cn}
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:5555,http://127.0.0.1:5555,https://dreambuilder.art}
   admin:
     # 初始管理员邮箱，首次启动时自动创建
     initial-email: ${ADMIN_INITIAL_EMAIL:admin@admin.com}
@@ -225,6 +225,10 @@ novanova:
     # 初始管理员昵称
     initial-nickname: ${ADMIN_INITIAL_NICKNAME:admin}
   email:
+    # 邮件传输方式：smtp 或 resend。Resend 使用 HTTPS 443，适合 Railway 出站网络。
+    provider: ${EMAIL_PROVIDER:smtp}
+    # Resend API Key，仅在 provider=resend 时使用。
+    resend-api-key: ${RESEND_API_KEY:}
     # 发件人显示地址
     from: ${EMAIL_SMTP_FROM:}
     # 注册邮箱域名白名单，邮箱验证码与第三方首次注册共用；空值或独立星号表示不限制。

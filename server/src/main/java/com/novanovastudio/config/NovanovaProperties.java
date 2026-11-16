@@ -450,7 +450,7 @@ public class NovanovaProperties {
     public static class Cors {
 
         /** 允许跨域来源规则 */
-        private String allowedOriginPatterns = "http://localhost:5555,http://127.0.0.1:5555,https://www.novanovastudio.cn";
+        private String allowedOriginPatterns = "http://localhost:5555,http://127.0.0.1:5555,https://dreambuilder.art";
 
         /**
          * 获取允许的来源匹配表达式
@@ -545,8 +545,47 @@ public class NovanovaProperties {
      */
     public static class Email {
 
+        /** 邮件传输方式，支持 smtp 或 resend。 */
+        private String provider = "smtp";
+
+        /** Resend HTTPS API Key。 */
+        @lombok.ToString.Exclude
+        private String resendApiKey = "";
+
         /** 邮件发件人 */
         private String from = "";
+
+        /**
+         * 获取邮件传输方式。
+         * @return String smtp 或 resend
+         */
+        public String getProvider() {
+            return provider;
+        }
+
+        /**
+         * 设置邮件传输方式。
+         * @param provider String smtp 或 resend
+         */
+        public void setProvider(String provider) {
+            this.provider = provider;
+        }
+
+        /**
+         * 获取 Resend API Key。
+         * @return String API Key
+         */
+        public String getResendApiKey() {
+            return resendApiKey;
+        }
+
+        /**
+         * 设置 Resend API Key。
+         * @param resendApiKey String API Key
+         */
+        public void setResendApiKey(String resendApiKey) {
+            this.resendApiKey = resendApiKey;
+        }
 
         /** 允许注册的邮箱域名，逗号分隔；为空或包含独立星号表示不限制。 */
         private String allowedSuffixes = "qq.com,163.com,126.com,gmail.com,outlook.com,hotmail.com,foxmail.com,icloud.com,sina.com,aliyun.com,"

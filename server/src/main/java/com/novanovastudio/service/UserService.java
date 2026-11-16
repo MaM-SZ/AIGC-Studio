@@ -111,7 +111,7 @@ public class UserService {
     private static final String MAIL_BRAND_NAME = "Novanova Studio";
 
     /** 邮件品牌图标地址，邮件客户端不渲染SVG，必须指向公网可访问的位图 */
-    private static final String MAIL_BRAND_LOGO_URL = "https://www.novanovastudio.cn/logo/novanovastudio-108x108.png";
+    private static final String MAIL_BRAND_LOGO_URL = "https://dreambuilder.art/logo/novanovastudio-108x108.png";
 
     /** 用户仓储 */
     private final UserRepository userRepository;
@@ -136,6 +136,9 @@ public class UserService {
 
     /** 邮件发送器 */
     private final JavaMailSender mailSender;
+
+    /** Resend HTTPS 邮件发送器 */
+    private final ResendEmailService resendEmailService;
 
     /** 积分服务 */
     private final CreditService creditService;
@@ -933,6 +936,11 @@ public class UserService {
      * @return Mono<Void> 发送结果
      */
     private Mono<Void> sendPasswordResetEmail(String email, String resetUrl) {
+        if (resendEmailService.isEnabled()) {
+            return resendEmailService.send(email, MAIL_BRAND_NAME + " 重置密码", buildPasswordResetEmailHtml(resetUrl))
+                    .onErrorMap(exception -> new BusinessException(ErrorCode.SYSTEM_ERROR,
+                            SystemMessage.of("business.failedToSendPasswordResetEmail")));
+        }
         return Mono.fromRunnable(() -> {
             if (!StringUtils.hasText(properties.getEmail().getFrom())) {
                 throw new IllegalStateException("邮箱服务未配置，无法发送密码重置邮件");
@@ -1027,6 +1035,11 @@ public class UserService {
      * @return Mono<Void> 发送结果
      */
     private Mono<Void> sendEmailVerificationCode(String email, String code) {
+        if (resendEmailService.isEnabled()) {
+            return resendEmailService.send(email, MAIL_BRAND_NAME + " 登录验证码", buildVerificationEmailHtml(code))
+                    .onErrorMap(exception -> new BusinessException(ErrorCode.SYSTEM_ERROR,
+                            SystemMessage.of("business.failedToSendEmailVerificationCode")));
+        }
         // 邮件发送属于阻塞IO，放入boundedElastic执行。
         return Mono.fromRunnable(() -> {
             if (!StringUtils.hasText(properties.getEmail().getFrom())) {
