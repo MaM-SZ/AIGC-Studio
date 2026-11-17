@@ -2,7 +2,7 @@
 /**
  * PWA 图标资产生成脚本（纯 Node 实现，无第三方依赖）。
  *
- * 从 public/logo/novanovastudio.svg 内嵌的高清位图中提取品牌图形，
+ * 从 public/logo/dream-builder.svg 内嵌的高清位图中提取品牌图形，
  * 生成 PWA 所需图标，输出到 public/pwa/：
  *   - icon-192.png / icon-512.png        purpose: any，保留透明背景
  *   - maskable-192.png / maskable-512.png 白色底，内容缩至 80% 安全区
@@ -18,7 +18,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const webDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SOURCE_SVG = path.join(webDir, "public/logo/novanovastudio.svg");
+const SOURCE_SVG = path.join(webDir, "public/logo/dream-builder.svg");
 const OUT_DIR = path.join(webDir, "public/pwa");
 const MASKABLE_BG = [255, 255, 255];
 const MASKABLE_CONTENT_RATIO = 0.8;
