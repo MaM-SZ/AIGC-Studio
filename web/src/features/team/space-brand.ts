@@ -11,7 +11,7 @@ export type SpaceBrand = {
 
 /** 平台默认品牌，团队未配置 Logo 时使用相应的默认图标。PWA 安装入口固定使用该品牌名（与 manifest 一致）。 */
 export const platformBrand: SpaceBrand = {
-    name: "Novanova Studio",
+    name: "Dream Builder Studio",
     logoUrl: "/logo/dream-builder.svg",
     iconUrl: "/logo/dream-builder-favicon.png",
     introduction: "",

@@ -20,7 +20,7 @@ test("团队品牌保留名称与大小写，只有未配置 Logo 时才使用�
     assert.equal(withoutLogo.iconUrl, platform.iconUrl);
     assert.equal(withoutLogo.name, team.name);
     assert.equal(withoutLogo.isTeam, true);
-    assert.equal(platform.name, "Novanova Studio");
+    assert.equal(platform.name, "Dream Builder Studio");
     assert.equal(platform.agentName, "Novanova Agent");
     assert.equal(platform.isTeam, false);
     assert.equal(existsSync(new URL(`../../../public${platform.logoUrl}`, import.meta.url)), true);
