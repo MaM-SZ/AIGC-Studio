@@ -1,0 +1,21 @@
+export const CAMERA_FILTER_TYPE = {
+  NORMAL: 'normal',
+  WARM: 'warm',
+  COLD: 'cold',
+  GRAYSCALE: 'grayscale',
+  SEPIA: 'sepia',
+  VINTAGE: 'vintage',
+  BROWNIE: 'brownie',
+  KODACHROME: 'kodachrome',
+  POLAROID: 'polaroid',
+  DRAMATIC: 'dramatic',
+  MOONLIGHT: 'moonlight',
+  SUNRISE: 'sunrise',
+  TECHNICOLOR: 'technicolor',
+  PIXEL: 'pixel',
+  EMBOSS: 'emboss',
+  SKETCH: 'sketch',
+  INVERT: 'invert',
+  BLACK_WHITE: 'blackWhite',
+  NOISE: 'noise'
+}

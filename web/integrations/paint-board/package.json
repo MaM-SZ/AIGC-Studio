@@ -1,0 +1,53 @@
+{
+    "name": "novanova-paint-board",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "packageManager": "pnpm@8.15.9",
+    "scripts": {
+        "build": "vite build",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run --config vitest.config.ts"
+    },
+    "dependencies": {
+        "@huggingface/transformers": "^3.0.0",
+        "daisyui": "^4.12.24",
+        "fabric": "^5.3.0",
+        "gradient-parser": "^1.1.1",
+        "i18next": "^22.4.9",
+        "idb-keyval": "^6.2.1",
+        "immer": "^10.0.3",
+        "jsondiffpatch": "^0.6.0",
+        "lodash-es": "^4.17.21",
+        "lucide-react": "^0.544.0",
+        "perfect-freehand": "1.2.3",
+        "react": "^18.2.0",
+        "react-best-gradient-color-picker": "^3.0.14",
+        "react-dom": "^18.2.0",
+        "react-i18next": "^12.1.5",
+        "react-image-crop": "^11.0.7",
+        "roughjs": "^4.6.6",
+        "sortablejs": "^1.15.6",
+        "uuid": "^9.0.1",
+        "zustand": "^4.4.7",
+        "localforage": "1.10.0"
+    },
+    "devDependencies": {
+        "@types/fabric": "^5.3.6",
+        "@types/lodash": "^4.14.191",
+        "@types/lodash-es": "^4.17.12",
+        "@types/node": "^18.11.18",
+        "@types/react": "^18.0.26",
+        "@types/react-dom": "^18.0.10",
+        "@types/sortablejs": "^1.15.8",
+        "@types/uuid": "^9.0.7",
+        "@vitejs/plugin-react": "^4.7.0",
+        "autoprefixer": "^10.4.13",
+        "postcss": "^8.4.21",
+        "tailwindcss": "^3.4.17",
+        "typescript": "^5.9.2",
+        "vite": "^5.4.20",
+        "vite-plugin-svgr": "^4.2.0",
+        "vitest": "^2.1.9"
+    }
+}

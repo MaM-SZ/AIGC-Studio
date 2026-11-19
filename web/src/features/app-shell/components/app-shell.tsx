@@ -33,6 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const floatingActionsRef = useRef<HTMLDivElement>(null);
     const hideSidebar = /^\/canvas\/[^/]+/.test(pathname);
+    const drawingWorkspace = pathname === "/hand-drawing";
 
     useLayoutEffect(() => {
         const element = floatingActionsRef.current;
@@ -51,7 +52,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             observer.disconnect();
             document.documentElement.style.removeProperty("--studio-floating-actions-width");
         };
-    }, [hideSidebar]);
+    }, [hideSidebar, drawingWorkspace]);
 
     const pathSlug = pathname.split("/").filter(Boolean).slice(0, 2).join("/");
     const slug = pathSlug.startsWith("admin/") ? pathSlug : pathname.split("/").filter(Boolean)[0];
@@ -77,7 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </>
             )}
 
-            {!hideSidebar ? (
+            {!hideSidebar && !drawingWorkspace ? (
                 <div ref={floatingActionsRef} className="fixed right-3 top-3 z-40 flex max-w-[calc(100vw-4.5rem)] items-center gap-2 md:max-w-[calc(100vw-7rem)]">
                     {team ? <span role="status" title={teamSpaceLabel} className="mr-1 min-w-0 max-w-80 truncate text-xs text-[var(--studio-muted)]">{teamSpaceLabel}</span> : null}
                     <div data-tour="header-links" className="flex items-center gap-2">
@@ -119,7 +120,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
             {/* Main content */}
             <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-                <div className={`min-h-0 flex-1 ${hideSidebar ? "overflow-hidden" : "overflow-y-auto"}`}>{children}</div>
+                <div className={`min-h-0 flex-1 ${hideSidebar || drawingWorkspace ? "overflow-hidden" : "overflow-y-auto"}`}>{children}</div>
             </div>
 
             <AuthModal />

@@ -12,3 +12,7 @@ bun.lock
 *.gif
 *.webp
 *.svg
+
+# 固定的第三方源码快照与画板构建产物
+integrations/paint-board/vendor/
+public/paint-board/

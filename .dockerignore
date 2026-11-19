@@ -10,6 +10,8 @@ docs/out
 web/.next
 web/node_modules
 web/.pnpm-store
+web/integrations/paint-board/.pnpm-store
+web/public/paint-board
 server/.maven-repository
 web/out
 *.log

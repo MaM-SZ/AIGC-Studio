@@ -26,6 +26,12 @@ function nextConfig(phase: string): NextConfig {
                     { key: "X-Content-Type-Options", value: "nosniff" },
                     { key: "X-Frame-Options", value: "DENY" },
                 ],
+            }, {
+                source: "/paint-board/index.html",
+                headers: [
+                    { key: "Content-Security-Policy", value: "base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'" },
+                    { key: "X-Frame-Options", value: "SAMEORIGIN" },
+                ],
             }];
         },
         async rewrites() {

@@ -1,0 +1,425 @@
+html[data-theme="studio"] {
+    --b1: initial;
+    --b2: initial;
+    --b3: initial;
+    --bc: initial;
+    --p: initial;
+    --pc: initial;
+    --n: initial;
+    --nc: initial;
+    --su: initial;
+    --suc: initial;
+    --fallback-b1: var(--studio-surface);
+    --fallback-b2: var(--studio-surface-raised);
+    --fallback-b3: var(--studio-surface-hover);
+    --fallback-bc: var(--studio-ink);
+    --fallback-p: var(--studio-action);
+    --fallback-pc: var(--studio-action-foreground);
+    --fallback-n: var(--studio-surface-raised);
+    --fallback-nc: var(--studio-ink);
+    --fallback-su: var(--studio-action);
+    --fallback-suc: var(--studio-action-foreground);
+    --rounded-box: 0.5rem;
+    --rounded-btn: 0.375rem;
+    /* 透明作品的预览底衬独立于界面主题，不参与画布绘制或导出。 */
+    --studio-paper: #fafafa;
+    --studio-paper-grid: #ededf0;
+    color: var(--studio-ink);
+    background: var(--studio-page);
+}
+
+html,
+body,
+#root {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+.h-screen {
+    height: 100dvh;
+}
+.w-screen {
+    width: 100%;
+}
+body {
+    font-family: ui-sans-serif, system-ui, sans-serif;
+}
+.font-fredokaOne {
+    font-family: inherit;
+}
+
+.w-screen.h-screen.bg-slate-100,
+.bg-slate-100:has(> img),
+.ReactCrop,
+canvas.object-contain {
+    background-color: var(--studio-paper);
+    background-image: conic-gradient(var(--studio-paper-grid) 25%, transparent 0 50%, var(--studio-paper-grid) 0 75%, transparent 0);
+    background-size: 24px 24px;
+}
+
+[class~="bg-[#eef1ff]"],
+[class~="bg-[#eef1ff95]"] {
+    background-color: var(--studio-surface);
+}
+[class~="bg-[#333C4D]"] {
+    background-color: var(--studio-surface-raised);
+}
+.tab.text-white {
+    color: var(--studio-muted);
+}
+.tab.tab-active {
+    color: var(--studio-action-foreground);
+    background-color: var(--studio-action);
+}
+.shadow-xl {
+    box-shadow: none;
+}
+.card {
+    border-radius: 8px;
+}
+.btn {
+    color: var(--studio-ink);
+}
+.btn:not(.btn-primary):hover {
+    color: var(--studio-ink);
+    background: var(--studio-surface-hover);
+    border-color: var(--studio-line-strong);
+}
+.btn-neutral {
+    background: var(--studio-surface-raised);
+    border-color: var(--studio-line);
+}
+#clean-modal + .modal .btn-ghost {
+    color: var(--studio-ink);
+    background: var(--studio-surface-raised);
+    border-color: var(--studio-line-strong);
+}
+#clean-modal + .modal .btn-ghost:hover,
+#clean-modal + .modal .btn-ghost:active {
+    background: var(--studio-surface-hover);
+}
+svg.lucide[stroke="#66CC8A"] {
+    color: var(--studio-action);
+    stroke: currentColor;
+}
+.btn-neutral svg {
+    color: var(--studio-ink);
+    stroke: currentColor;
+}
+svg [fill="#66CC89"] {
+    fill: var(--studio-action);
+}
+svg[fill="#000000"],
+svg [fill="#000000"] {
+    fill: var(--studio-ink);
+}
+.join.bg-gray-200 {
+    background-color: var(--studio-surface-raised);
+}
+.join > [style*="background"] {
+    outline: 1px solid var(--studio-line-strong);
+    outline-offset: -1px;
+}
+.text-black {
+    color: var(--studio-ink);
+}
+.border-black {
+    border-color: var(--studio-line-strong);
+}
+.bg-white:not(.bg-transparent) {
+    background-color: var(--studio-surface);
+}
+
+.studio-asset-tools {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 4;
+    display: flex;
+    gap: 4px;
+}
+.studio-asset-tools button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--studio-surface);
+    color: var(--studio-text);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.studio-asset-tools button:hover {
+    background: var(--studio-surface-hover);
+    color: var(--studio-ink);
+}
+.studio-asset-tools button:focus-visible {
+    outline: 2px solid var(--studio-action);
+    outline-offset: 2px;
+}
+.studio-asset-tools button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.studio-quick-tools,
+.studio-tool-settings,
+.studio-settings-toggle {
+    position: fixed;
+    z-index: 4;
+    background: var(--studio-surface);
+    color: var(--studio-text);
+    border: 0;
+    border-radius: 8px;
+}
+.studio-quick-tools {
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px;
+}
+.studio-quick-tools button,
+.studio-settings-toggle,
+.studio-tool-settings button {
+    cursor: pointer;
+}
+.studio-quick-tools button,
+.studio-settings-toggle,
+.studio-tool-settings header button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 6px;
+    color: inherit;
+    background: transparent;
+}
+.studio-quick-tools button:hover,
+.studio-settings-toggle:hover,
+.studio-tool-settings header button:hover,
+.studio-settings-tabs button:hover {
+    background: var(--studio-surface-hover);
+    color: var(--studio-ink);
+}
+.studio-quick-tools button[aria-pressed="true"],
+.studio-settings-tabs button[aria-pressed="true"],
+.studio-settings-toggle[aria-expanded="true"] {
+    background: var(--studio-action);
+    color: var(--studio-action-foreground);
+}
+.studio-quick-tools button:focus-visible,
+.studio-settings-toggle:focus-visible,
+.studio-tool-settings button:focus-visible {
+    outline: 2px solid var(--studio-action);
+    outline-offset: 2px;
+}
+.studio-settings-toggle {
+    right: 16px;
+    bottom: 16px;
+    width: 44px;
+    height: 44px;
+    background: var(--studio-surface);
+}
+.studio-zoom-control {
+    position: fixed;
+    z-index: 4;
+    left: 16px;
+    bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 180px;
+    height: 44px;
+    padding: 0 8px;
+    border-radius: 8px;
+    background: var(--studio-surface);
+    color: var(--studio-text);
+}
+.studio-zoom-control input {
+    min-width: 0;
+    flex: 1;
+    height: 32px;
+    accent-color: var(--studio-action);
+    cursor: pointer;
+}
+.studio-zoom-control button {
+    min-width: 48px;
+    height: 32px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+.studio-zoom-control button:hover {
+    background: var(--studio-surface-hover);
+    color: var(--studio-ink);
+}
+.studio-zoom-control :focus-visible {
+    outline: 2px solid var(--studio-action);
+    outline-offset: 2px;
+}
+.studio-tool-settings {
+    right: 16px;
+    bottom: 72px;
+    display: flex;
+    flex-direction: column;
+    width: min(320px, calc(100vw - 88px));
+    max-height: calc(100dvh - 144px);
+    padding: 12px;
+}
+.studio-tool-settings header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 14px;
+    font-weight: 500;
+}
+.studio-tool-settings header button {
+    width: 32px;
+    height: 32px;
+}
+.studio-settings-tabs {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+    flex-shrink: 0;
+}
+.studio-settings-tabs button {
+    flex: 1;
+    padding: 6px 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--studio-text);
+    font: inherit;
+    font-size: 13px;
+    white-space: nowrap;
+}
+.studio-settings-content {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 4px;
+}
+.studio-settings-utilities {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    flex-shrink: 0;
+    padding-top: 8px;
+    margin-top: 8px;
+    border-top: 1px solid var(--studio-line);
+    font-size: 13px;
+}
+.studio-settings-utilities > button,
+.studio-settings-camera {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+}
+.studio-settings-utilities > button {
+    padding: 4px;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+}
+.studio-settings-utilities > button:hover {
+    color: var(--studio-ink);
+    background: var(--studio-surface-hover);
+}
+.studio-settings-camera > .dropdown {
+    margin-left: 0;
+}
+.studio-settings-camera .dropdown-content {
+    right: 0;
+}
+.studio-pan-surface {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    cursor: grab;
+    touch-action: none;
+}
+.studio-pan-surface:active {
+    cursor: grabbing;
+}
+/* 复用上游操作栏，只调整位置；文字入口统一放在左侧常用工具。 */
+.fixed.bottom-5.left-2\/4 {
+    z-index: 3;
+    left: 50%;
+    right: auto;
+    bottom: 16px;
+    transform: translateX(-50%);
+    max-width: calc(100vw - 552px);
+}
+.fixed.bottom-5.left-2\/4 > div {
+    flex-direction: row;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-radius: 8px;
+}
+.fixed.bottom-5.left-2\/4 > div > * {
+    flex-shrink: 0;
+}
+.fixed.bottom-5.left-2\/4 [data-tip]:has(> .lucide-type) {
+    display: none;
+}
+
+@media (max-width: 767px) {
+    .studio-asset-tools button {
+        min-height: 44px;
+        padding: 8px;
+    }
+    .studio-asset-tools {
+        top: 8px;
+        right: 8px;
+    }
+    .studio-quick-tools {
+        left: 8px;
+    }
+    .studio-quick-tools button {
+        width: 44px;
+        height: 44px;
+    }
+    .studio-settings-toggle {
+        right: 8px;
+    }
+    .studio-zoom-control {
+        left: 8px;
+        bottom: 72px;
+    }
+    .studio-tool-settings {
+        right: 8px;
+        bottom: 128px;
+        max-height: calc(100dvh - 208px);
+    }
+    .fixed.bottom-5.left-2\/4 {
+        left: 8px;
+        right: 64px;
+        transform: none;
+        max-width: none;
+    }
+    .fixed.bottom-5.left-2\/4 > div > label.swap {
+        display: none;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}

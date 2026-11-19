@@ -1,0 +1,10 @@
+dist
+node_modules
+dev-dist
+dev-sw.js
+registerSW.js
+sw.js
+workbox-*.js
+*.config.js
+*.config.cjs
+*.config.ts

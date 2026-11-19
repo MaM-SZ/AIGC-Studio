@@ -1,0 +1,18 @@
+{
+    "title": "Drawing board",
+    "defaultTitle": "Drawing",
+    "loading": "Loading drawing board…",
+    "loadFailed": "The drawing board could not load or save locally. Please retry.",
+    "retry": "Retry",
+    "insertAsset": "Insert image from assets",
+    "searchAssets": "Search image names or tags",
+    "noImages": "No matching image assets",
+    "inserted": "Image inserted",
+    "insertFailed": "Could not insert the image. Please retry.",
+    "saveAsset": "Save to assets",
+    "save": "Save",
+    "cancel": "Cancel",
+    "assetName": "Asset name",
+    "saved": "Saved to assets",
+    "saveFailed": "Could not save the drawing. Please retry."
+}

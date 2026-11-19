@@ -1,4 +1,4 @@
-import { BookOpenText, Clapperboard, FileText, Frame, ImageIcon, Images, SendToBack, Store, Users } from "lucide-react";
+import { BookOpenText, Clapperboard, FileText, Frame, ImageIcon, Images, Paintbrush, SendToBack, Store, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type NavigationTool = {
@@ -14,6 +14,7 @@ export type NavigationTool = {
 export const navigationTools = [
     { slug: "image",   labelKey: "common.image",     icon: ImageIcon,    group: "create",    adminOnly: undefined, isNew: undefined },
     { slug: "video",   labelKey: "common.video",     icon: Clapperboard, group: "create",    adminOnly: undefined, isNew: undefined },
+    { slug: "hand-drawing", labelKey: "handDrawing.title", icon: Paintbrush, group: "create", adminOnly: undefined, isNew: true },
     { slug: "canvas",  labelKey: "common.infiniteCanvas",   icon: SendToBack,    group: "create",    adminOnly: undefined, isNew: undefined },
     { slug: "script",  labelKey: "common.scriptCreation",   icon: BookOpenText,  group: "create",    adminOnly: undefined, isNew: true },
     { slug: "comic-drama", labelKey: "common.comicDramaCreation", icon: Frame,       group: "create",    adminOnly: undefined, isNew: true },

@@ -1,0 +1,18 @@
+{
+    "title": "手绘画板",
+    "defaultTitle": "手绘画作",
+    "loading": "正在加载画板…",
+    "loadFailed": "画板加载或本地保存失败，请重试",
+    "retry": "重试",
+    "insertAsset": "从资产库插入图片",
+    "searchAssets": "搜索图片名称或标签",
+    "noImages": "暂无匹配的图片资产",
+    "inserted": "已插入画板",
+    "insertFailed": "图片插入失败，请重试",
+    "saveAsset": "保存到资产库",
+    "save": "保存",
+    "cancel": "取消",
+    "assetName": "资产名称",
+    "saved": "已保存到资产库",
+    "saveFailed": "保存失败，请重试"
+}
