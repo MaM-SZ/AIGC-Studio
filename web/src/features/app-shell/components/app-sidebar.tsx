@@ -139,7 +139,10 @@ export function AppSidebar() {
                             </button>
                         )}
                     </Tooltip>
-                    <SidebarInstallEntry />
+                    {/* 暂时隐藏侧栏下载入口。 */}
+                    <div className="hidden">
+                        <SidebarInstallEntry />
+                    </div>
                     <LanguageMenu />
                     {showTeamSwitcher ? (
                         <Tooltip title="切换团队" placement="right">
