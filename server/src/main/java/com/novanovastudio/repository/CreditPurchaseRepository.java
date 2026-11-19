@@ -229,6 +229,21 @@ public class CreditPurchaseRepository {
                 .map((row, metadata) -> order(row)).all().collectList();
     }
 
+    /** 按主键分页读取 Waffo 待支付订单，用于后台核对渠道关闭状态。 */
+    public Mono<List<Order>> listPendingWaffoOrders(long afterId, OffsetDateTime scanBefore, int limit) {
+        return databaseClient.sql("""
+                SELECT id, order_no, user_id, product_id, credits, price_amount, wallet_team_id, payment_method, status,
+                    provider_trade_no, expires_at, paid_at, created_at, first_purchase_bonus_credits, base_credits
+                FROM credit_purchase_orders
+                WHERE status = 'pending' AND payment_method = 'waffo' AND wallet_team_id = 0
+                    AND id > :afterId AND created_at <= :scanBefore
+                ORDER BY id ASC
+                LIMIT :limit
+                """)
+                .bind("afterId", afterId).bind("scanBefore", scanBefore).bind("limit", limit)
+                .map((row, metadata) -> order(row)).all().collectList();
+    }
+
     /**
      * 查询用户最近的积分购买订单。
      *

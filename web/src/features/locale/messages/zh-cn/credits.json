@@ -182,5 +182,12 @@
     "noPrompt": "未记录提示词",
     "failureReason": "失败原因",
     "generatingResult": "任务生成中，完成后可在这里查看结果",
-    "failedWithoutResult": "任务未生成结果"
+    "failedWithoutResult": "任务未生成结果",
+    "waffoAvailable": "托管收银台 · 人民币",
+    "waffoCheckout": "Waffo 收银台",
+    "waffoCheckoutHint": "打开 Waffo 安全收银台，按页面提示完成支付。",
+    "openWaffoCheckout": "打开 Waffo 收银台",
+    "waffoConfirmationHint": "付款后将自动确认积分到账。关闭此窗口会保留订单；如已付款，请等待确认，无需重复支付。",
+    "failedToLoadPaymentMethods": "支付方式加载失败",
+    "noPaymentMethods": "暂时没有可用的支付方式"
 }

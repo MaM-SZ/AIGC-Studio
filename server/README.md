@@ -29,3 +29,7 @@ mvn spring-boot:run
 迁移脚本位于 `src/main/resources/db/migration/`，当前仅保留一个 `V1__Initial_Schema.sql` 初始化脚本。服务启动时会先连接 `POSTGRES_ADMINISTRATOR_DATABASE`（默认 `postgres`），目标 `POSTGRES_DATABASE` 不存在时自动创建，再由 Flyway 通过 JDBC 执行初始化；运行期业务读写统一通过 R2DBC 完成。
 
 自动建库复用 `POSTGRES_USERNAME` 和 `POSTGRES_PASSWORD`，该账号必须具备管理数据库连接权限和 `CREATEDB` 权限。已有数据库不会被删除或重建；仍保留旧版 Flyway V1 至 V21 历史的数据库需要人工清空后再使用当前版本。
+
+### Waffo 支付配置
+
+平台积分充值支持 Waffo 托管收银台，保持人民币 CNY 定价，默认关闭并使用测试环境。配置、商户产品设置、Webhook、数据库迁移和沙箱验收步骤见 [Waffo 接入文档](../deploy_docs/waffo-payments.md)。

@@ -1298,6 +1298,10 @@ export function acknowledgeFirstPurchaseBonus() {
     return serverPost<null>("/payment/credit/acknowledgeFirstPurchaseBonus", {}, { scope: "platform" });
 }
 
+export function listCreditPaymentMethods() {
+    return serverGet<string[]>("/payment/credit/listPaymentMethods", { scope: "platform" });
+}
+
 export function listCreditProducts() {
     return serverGet<ServerCreditProductList>("/payment/credit/listProducts", { scope: "platform" });
 }

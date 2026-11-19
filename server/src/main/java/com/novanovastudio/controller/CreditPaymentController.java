@@ -28,11 +28,13 @@ public class CreditPaymentController {
     /** 积分购买服务。 */
     private final CreditPurchaseService purchaseService;
 
-    /**
-     * 查询启用的积分商品。
-     *
-     * @return Mono<ApiResponse<CreditProductListResponse>> 商品列表
-     */
+    /** 查询已启用的支付渠道。 */
+    @GetMapping("/listPaymentMethods")
+    public Mono<ApiResponse<java.util.List<String>>> listPaymentMethods() {
+        return purchaseService.listPaymentMethods().map(ApiResponse::ok);
+    }
+
+    /** 查询启用的积分商品。 */
     @GetMapping("/listProducts")
     public Mono<ApiResponse<PaymentDtos.CreditProductListResponse>> listProducts() {
         return purchaseService.listProducts().map(ApiResponse::ok);

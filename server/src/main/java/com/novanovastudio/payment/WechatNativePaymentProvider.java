@@ -58,6 +58,9 @@ public class WechatNativePaymentProvider implements PaymentProvider {
      * @return 微信支付标识
      */
     @Override
+    public boolean isEnabled() { return properties.getWechat().isEnabled(); }
+
+    @Override
     public String method() {
         return METHOD;
     }

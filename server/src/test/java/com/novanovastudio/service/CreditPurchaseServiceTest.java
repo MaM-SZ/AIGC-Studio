@@ -462,6 +462,54 @@ class CreditPurchaseServiceTest {
         verify(currentUserProvider, never()).currentUserId();
     }
 
+    @Test
+    void shouldSettleWaffoNotificationOnlyOnceAndRejectWrongAmount() {
+        when(providerRegistry.require("waffo")).thenReturn(provider);
+        var pending = waffoOrder("pending", false);
+        var paid = waffoOrder("paid", false);
+        when(purchaseRepository.findOrder("order-1")).thenReturn(Mono.just(pending), Mono.just(paid));
+        when(provider.verifyNotification(any())).thenReturn(Mono.just(new PaymentProvider.PaymentNotification(
+                "waffo", "app-id", "order-1", new BigDecimal("2.00"), "trade-1", "SUCCESS", OffsetDateTime.now())));
+        prepareWechatSettlement();
+        when(purchaseRepository.claimOrderForSettlement("order-1", "trade-1")).thenReturn(Mono.just(waffoOrder("processing", false)));
+        StepVerifier.create(purchaseService.handleWaffoNotification(Map.of()).then(purchaseService.handleWaffoNotification(Map.of())))
+                .verifyComplete();
+        verify(creditRepository).changeBalance(42L, new BigDecimal("20"));
+        verify(purchaseRepository).claimOrderForSettlement("order-1", "trade-1");
+        when(purchaseRepository.findOrder("order-1")).thenReturn(Mono.just(pending));
+        when(provider.verifyNotification(any())).thenReturn(Mono.just(new PaymentProvider.PaymentNotification(
+                "waffo", "app-id", "order-1", new BigDecimal("1.00"), "trade-1", "SUCCESS", OffsetDateTime.now())));
+        StepVerifier.create(purchaseService.handleWaffoNotification(Map.of())).expectError(BusinessException.class).verify();
+    }
+
+    @Test
+    void shouldKeepExpiredWaffoOrderPendingUntilProviderConfirmsClosure() {
+        when(providerRegistry.require("waffo")).thenReturn(provider);
+        when(purchaseRepository.findOrder("order-1", 42L)).thenReturn(Mono.just(waffoOrder("pending", true)));
+        when(provider.queryOrder("order-1")).thenReturn(Mono.empty());
+        StepVerifier.create(purchaseService.getOrderStatus("order-1")).assertNext(status -> assertEquals("pending", status.status())).verifyComplete();
+        verify(purchaseRepository, never()).closeExpiredOrder(anyString());
+        verify(provider, never()).closePayment(anyString());
+    }
+
+    @Test
+    void shouldReconcileWaffoOrdersWithoutBrowserAndContinueAfterFailures() {
+        when(providerRegistry.require("waffo")).thenReturn(provider);
+        when(purchaseRepository.listPendingWaffoOrders(eq(0L), any(), eq(100)))
+                .thenReturn(Mono.just(List.of(waffoOrder("pending", true))));
+        when(provider.queryOrder("order-1")).thenReturn(Mono.error(new IllegalStateException("temporary")));
+        StepVerifier.create(purchaseService.reconcileWaffoOrders()).verifyComplete();
+        verify(provider).queryOrder("order-1");
+        verify(purchaseRepository, never()).closeExpiredOrder(anyString());
+    }
+
+    private CreditPurchaseRepository.Order waffoOrder(String status, boolean expired) {
+        var order = wechatOrder("order-1", status, expired);
+        return new CreditPurchaseRepository.Order(order.id(), order.orderNo(), order.userId(), order.productId(), order.credits(),
+                order.priceAmount(), order.walletTeamId(), "waffo", status, order.providerTradeNo(), order.expiresAt(),
+                order.paidAt(), order.createdAt(), order.firstPurchaseBonusCredits(), order.baseCredits());
+    }
+
     /** 准备微信主入账及零首充赠送的成功事务。 */
     private void prepareWechatSettlement() {
         when(purchaseRepository.claimOrderForSettlement("order-1", "trade-1")).thenReturn(Mono.just(wechatOrder("order-1", "processing", false)));

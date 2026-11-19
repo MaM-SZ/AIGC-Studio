@@ -29,12 +29,12 @@ public class PaymentProviderRegistry {
         this.providers = providers.stream().collect(Collectors.toUnmodifiableMap(PaymentProvider::method, Function.identity()));
     }
 
-    /**
-     * 获取指定支付方式的提供方。
-     *
-     * @param method String 支付方式
-     * @return PaymentProvider 支付提供方
-     */
+    /** 返回启用的支付渠道标识。 */
+    public List<String> enabledMethods() {
+        return providers.values().stream().filter(PaymentProvider::isEnabled).map(PaymentProvider::method).sorted().toList();
+    }
+
+    /** 获取指定支付方式的提供方。 */
     public PaymentProvider require(String method) {
         PaymentProvider provider = providers.get(method);
         if (provider == null) throw new BusinessException(ErrorCode.PARAM_INVALID, "暂不支持该支付方式");

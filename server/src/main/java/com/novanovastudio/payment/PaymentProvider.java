@@ -20,6 +20,9 @@ public interface PaymentProvider {
      */
     String method();
 
+    /** 是否向用户提供该支付方式。 */
+    default boolean isEnabled() { return true; }
+
     /**
      * 获取当前支付渠道配置的应用标识。
      * @return 应用标识，用于核对订单来源

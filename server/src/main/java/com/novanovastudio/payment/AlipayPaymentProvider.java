@@ -69,6 +69,9 @@ public class AlipayPaymentProvider implements PaymentProvider {
      * @return String 支付方式标识
      */
     @Override
+    public boolean isEnabled() { return properties.getAlipay().isEnabled(); }
+
+    @Override
     public String method() {
         return METHOD;
     }

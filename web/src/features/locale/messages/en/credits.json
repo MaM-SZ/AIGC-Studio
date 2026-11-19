@@ -182,5 +182,12 @@
     "noPrompt": "No prompt recorded",
     "failureReason": "Failure reason",
     "generatingResult": "Generation is in progress. The result will appear here once ready.",
-    "failedWithoutResult": "This task has no result"
+    "failedWithoutResult": "This task has no result",
+    "waffoAvailable": "Hosted checkout · CNY",
+    "waffoCheckout": "Waffo checkout",
+    "waffoCheckoutHint": "Open Waffo secure checkout and follow the payment instructions.",
+    "openWaffoCheckout": "Open Waffo checkout",
+    "waffoConfirmationHint": "Credits are added after payment confirmation. Closing this window keeps the order. If you have paid, wait for confirmation before trying again.",
+    "failedToLoadPaymentMethods": "Could not load payment methods",
+    "noPaymentMethods": "No payment methods are currently available"
 }

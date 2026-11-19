@@ -5,16 +5,28 @@ import { creditAmount, creditText } from "@/shared/lib/credit-amounts";
 import { useTranslation } from "@/features/locale/use-translation";
 
 import { Alert, App, Button, Empty, Modal, QRCode, Skeleton, Tag } from "antd";
-import { ArrowLeft, CheckCircle2, Clock, ExternalLink, Gift, LoaderCircle, QrCode, ScanLine, ShoppingCart, Ticket, WalletCards, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock, CreditCard, ExternalLink, Gift, LoaderCircle, QrCode, ScanLine, ShoppingCart, Ticket, WalletCards, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { acknowledgeFirstPurchaseBonus, cancelCreditOrder, createCreditPurchaseOrder, getCreditPurchaseOrderStatus, getCreditPurchasePayment, getCurrentUserInfo, getFirstPurchaseBonusStatus, listCreditProducts } from "@/services/api/server";
+import {
+    acknowledgeFirstPurchaseBonus,
+    cancelCreditOrder,
+    createCreditPurchaseOrder,
+    getCreditPurchaseOrderStatus,
+    getCreditPurchasePayment,
+    getCurrentUserInfo,
+    getFirstPurchaseBonusStatus,
+    listCreditProducts,
+    listCreditPaymentMethods,
+} from "@/services/api/server";
 import { useUserStore } from "@/features/auth/stores/use-user-store";
 import { firstPurchaseBonusCredits, firstPurchaseBonusYuan, firstPurchaseEffectiveBonus, firstPurchaseTotalCredits, isExactBonusYuan } from "@/features/credits/first-purchase-bonus";
 import { useSpaceBrand } from "@/features/team/use-space-brand";
 import Link, { useSearchParams } from "@/shared/lib/team-navigation";
 import { cn } from "@/shared/lib/utils";
+
+import { paymentPresentation } from "@/features/credits/payment-presentation";
 
 import { FirstPurchaseBonusModal } from "./first-purchase-bonus-modal";
 
@@ -54,7 +66,7 @@ export default function CreditPurchasePage() {
     const setUser = useUserStore((state) => state.setUser);
     const user = useUserStore((state) => state.user);
     const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
-    const [paymentMethod, setPaymentMethod] = useState<"alipay" | "wechat">("alipay");
+    const [paymentMethod, setPaymentMethod] = useState<string>("alipay");
     const [orderPaymentMethod, setOrderPaymentMethod] = useState("alipay");
     const submittingRef = useRef(false);
     const [submitting, setSubmitting] = useState(false);
@@ -84,13 +96,22 @@ export default function CreditPurchasePage() {
         queryFn: listCreditProducts,
         staleTime: 60_000,
     });
+    const paymentMethodsQuery = useQuery({
+        queryKey: ["credit-payment-methods"],
+        queryFn: listCreditPaymentMethods,
+        staleTime: 60_000,
+    });
+    const paymentMethods = paymentMethodsQuery.data || [];
+    useEffect(() => {
+        if (paymentMethods.length && !paymentMethods.includes(paymentMethod)) setPaymentMethod(paymentMethods[0]);
+    }, [paymentMethods, paymentMethod]);
     const products = productsQuery.data?.products || [];
     const selectedProduct = useMemo(() => products.find((product) => product.id === selectedProductId) || null, [products, selectedProductId]);
     // 商品自带赠送与首充赠送取较大者，摘要与商品卡使用同一口径。
     const selectedEffectiveBonus = selectedProduct ? firstPurchaseEffectiveBonus(selectedProduct.bonusCredits, selectedProduct.priceAmount, bonusPercent) : creditAmount(0);
 
     // 支付宝交易是在二维码页面被加载的那一刻才创建的，二维码没展示过就查单只会反复拿到“交易不存在”。
-    const paymentShownRef = useRef(false);
+    const paymentShownRef = useRef(Boolean(searchParams.get("orderNo")));
     const orderStatusQuery = useQuery({
         queryKey: ["credit-purchase-order", orderNo],
         queryFn: () => getCreditPurchaseOrderStatus(orderNo),
@@ -104,7 +125,9 @@ export default function CreditPurchasePage() {
     const orderStatus = orderStatusQuery.data;
     // 已有订单的渠道与当前准备购买时选择的渠道分别保存，避免切换选项后显示错二维码。
     const isWechatPayment = (orderStatus?.paymentMethod || orderPaymentMethod) === "wechat";
-    const scanPayTitle = translate(isWechatPayment ? "credits.wechatScanPay" : "credits.alipayScanPay");
+    const presentation = paymentPresentation(orderStatus?.paymentMethod || orderPaymentMethod);
+    const isWaffoPayment = presentation.kind === "hosted";
+    const scanPayTitle = translate(presentation.titleKey);
     // 到账总额包含首充赠送，bonusCredits 为 0 时与订单积分一致。
     const paidTotalCredits = creditAmount(orderStatus?.credits || 0).add(creditAmount(orderStatus?.bonusCredits || 0));
 
@@ -157,7 +180,7 @@ export default function CreditPurchasePage() {
     }, [paymentUrl, orderNo]);
 
     const submitOrder = async () => {
-        if (!selectedProduct || submittingRef.current) return;
+        if (!selectedProduct || submittingRef.current || !paymentMethods.includes(paymentMethod)) return;
         submittingRef.current = true;
         setSubmitting(true);
         try {
@@ -192,6 +215,10 @@ export default function CreditPurchasePage() {
     // 关掉二维码等于放弃本次支付：二次确认后把订单置为已取消，避免留下没人付的待支付单。
     // 已支付/确认中/已关闭/已取消的订单只关窗口；状态还没取回来时按待支付处理，避免漏掉取消。
     const closePaymentModal = () => {
+        if (!presentation.cancelOnClose) {
+            setIsModalOpen(false);
+            return;
+        }
         const status = orderStatus?.status;
         if (status === "paid" || status === "processing" || status === "closed" || status === "cancelled") {
             setIsModalOpen(false);
@@ -379,40 +406,75 @@ export default function CreditPurchasePage() {
                         </h2>
                         <p className="mt-1 text-sm text-[var(--studio-muted)]">{translate("credits.paymentRedirectHint")}</p>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                        <button
-                            type="button"
-                            aria-pressed={paymentMethod === "alipay"}
-                            onClick={() => setPaymentMethod("alipay")}
-                            className={cn(
-                                "flex min-h-16 items-center gap-3 rounded-lg border px-4 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--studio-action)]",
-                                paymentMethod === "alipay" ? "border-[var(--studio-action)] bg-[var(--studio-surface-soft)]" : "border-[var(--studio-line)] bg-[var(--studio-surface)] hover:border-[var(--studio-action)]",
-                            )}
-                        >
-                            <img src="/payment/alipay.png" alt="支付宝" className="size-9 rounded-md object-contain" />
-                            <span className="min-w-0 flex-1">
-                                <span className="block font-medium text-[var(--studio-ink)]">{translate("credits.alipay")}</span>
-                                <span className="mt-1 block text-xs text-[var(--studio-muted)]">{translate("credits.alipayAvailable")}</span>
-                            </span>
-                            {paymentMethod === "alipay" ? <CheckCircle2 className="size-5 text-[var(--studio-action)]" /> : null}
-                        </button>
-                        <button
-                            type="button"
-                            aria-pressed={paymentMethod === "wechat"}
-                            onClick={() => setPaymentMethod("wechat")}
-                            className={cn(
-                                "flex min-h-16 items-center gap-3 rounded-lg border px-4 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--studio-action)]",
-                                paymentMethod === "wechat" ? "border-[var(--studio-action)] bg-[var(--studio-surface-soft)]" : "border-[var(--studio-line)] bg-[var(--studio-surface)] hover:border-[var(--studio-action)]",
-                            )}
-                        >
-                            <WechatPaymentIcon className="size-9 shrink-0" />
-                            <span className="min-w-0 flex-1">
-                                <span className="block font-medium text-[var(--studio-ink)]">{translate("credits.wechat")}</span>
-                                <span className="mt-1 block text-xs text-[var(--studio-muted)]">{translate("credits.wechatAvailable")}</span>
-                            </span>
-                            {paymentMethod === "wechat" ? <CheckCircle2 className="size-5 text-[var(--studio-action)]" /> : null}
-                        </button>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        {paymentMethods.includes("alipay") ? (
+                            <button
+                                type="button"
+                                aria-pressed={paymentMethod === "alipay"}
+                                onClick={() => setPaymentMethod("alipay")}
+                                className={cn(
+                                    "flex min-h-16 items-center gap-3 rounded-lg border px-4 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--studio-action)]",
+                                    paymentMethod === "alipay" ? "border-[var(--studio-action)] bg-[var(--studio-surface-soft)]" : "border-[var(--studio-line)] bg-[var(--studio-surface)] hover:border-[var(--studio-action)]",
+                                )}
+                            >
+                                <img src="/payment/alipay.png" alt="支付宝" className="size-9 rounded-md object-contain" />
+                                <span className="min-w-0 flex-1">
+                                    <span className="block font-medium text-[var(--studio-ink)]">{translate("credits.alipay")}</span>
+                                    <span className="mt-1 block text-xs text-[var(--studio-muted)]">{translate("credits.alipayAvailable")}</span>
+                                </span>
+                                {paymentMethod === "alipay" ? <CheckCircle2 className="size-5 text-[var(--studio-action)]" /> : null}
+                            </button>
+                        ) : null}
+                        {paymentMethods.includes("wechat") ? (
+                            <button
+                                type="button"
+                                aria-pressed={paymentMethod === "wechat"}
+                                onClick={() => setPaymentMethod("wechat")}
+                                className={cn(
+                                    "flex min-h-16 items-center gap-3 rounded-lg border px-4 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--studio-action)]",
+                                    paymentMethod === "wechat" ? "border-[var(--studio-action)] bg-[var(--studio-surface-soft)]" : "border-[var(--studio-line)] bg-[var(--studio-surface)] hover:border-[var(--studio-action)]",
+                                )}
+                            >
+                                <WechatPaymentIcon className="size-9 shrink-0" />
+                                <span className="min-w-0 flex-1">
+                                    <span className="block font-medium text-[var(--studio-ink)]">{translate("credits.wechat")}</span>
+                                    <span className="mt-1 block text-xs text-[var(--studio-muted)]">{translate("credits.wechatAvailable")}</span>
+                                </span>
+                                {paymentMethod === "wechat" ? <CheckCircle2 className="size-5 text-[var(--studio-action)]" /> : null}
+                            </button>
+                        ) : null}
+                        {paymentMethods.includes("waffo") ? (
+                            <button
+                                type="button"
+                                aria-pressed={paymentMethod === "waffo"}
+                                onClick={() => setPaymentMethod("waffo")}
+                                className={cn(
+                                    "flex min-h-16 items-center gap-3 rounded-lg border px-4 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--studio-action)]",
+                                    paymentMethod === "waffo" ? "border-[var(--studio-action)] bg-[var(--studio-surface-soft)]" : "border-[var(--studio-line)] bg-[var(--studio-surface)] hover:border-[var(--studio-action)]",
+                                )}
+                            >
+                                <CreditCard className="size-8 shrink-0 text-[var(--studio-action)]" />
+                                <span className="min-w-0 flex-1">
+                                    <span className="block font-medium text-[var(--studio-ink)]">Waffo</span>
+                                    <span className="mt-1 block text-xs text-[var(--studio-muted)]">{translate("credits.waffoAvailable")}</span>
+                                </span>
+                                {paymentMethod === "waffo" ? <CheckCircle2 className="size-5 text-[var(--studio-action)]" /> : null}
+                            </button>
+                        ) : null}
                     </div>
+                    {paymentMethodsQuery.isError ? (
+                        <Alert
+                            className="mt-3"
+                            type="error"
+                            title={translate("credits.failedToLoadPaymentMethods")}
+                            action={
+                                <Button size="small" onClick={() => void paymentMethodsQuery.refetch()}>
+                                    {translate("credits.reload")}
+                                </Button>
+                            }
+                        />
+                    ) : null}
+                    {!paymentMethodsQuery.isPending && !paymentMethodsQuery.isError && paymentMethods.length === 0 ? <Alert className="mt-3" type="info" title={translate("credits.noPaymentMethods")} /> : null}
                     <div className="mt-5 flex flex-col gap-3 border-t border-[var(--studio-line)] pt-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-sm text-[var(--studio-muted)]">
                             {selectedProduct
@@ -424,7 +486,14 @@ export default function CreditPurchasePage() {
                                   })
                                 : translate("credits.selectProductFirst")}
                         </div>
-                        <Button type="primary" size="large" disabled={!selectedProduct || submitting} loading={submitting} icon={submitting ? <LoaderCircle className="size-4" /> : <ShoppingCart className="size-4" />} onClick={() => void submitOrder()}>
+                        <Button
+                            type="primary"
+                            size="large"
+                            disabled={!selectedProduct || submitting || !paymentMethods.includes(paymentMethod)}
+                            loading={submitting}
+                            icon={submitting ? <LoaderCircle className="size-4" /> : <ShoppingCart className="size-4" />}
+                            onClick={() => void submitOrder()}
+                        >
                             {translate("credits.goToPay")}
                         </Button>
                     </div>
@@ -486,7 +555,13 @@ export default function CreditPurchasePage() {
                         ) : (
                             <div>
                                 <div className="flex items-center justify-center gap-2">
-                                    {isWechatPayment ? <WechatPaymentIcon className="size-6 shrink-0" /> : <img src="/payment/alipay.png" alt="支付宝" className="size-6 rounded object-contain" />}
+                                    {isWaffoPayment ? (
+                                        <CreditCard className="size-6 shrink-0" />
+                                    ) : isWechatPayment ? (
+                                        <WechatPaymentIcon className="size-6 shrink-0" />
+                                    ) : (
+                                        <img src="/payment/alipay.png" alt="支付宝" className="size-6 rounded object-contain" />
+                                    )}
                                     <span className="text-base font-semibold text-[var(--studio-ink)]">{scanPayTitle}</span>
                                 </div>
 
@@ -503,40 +578,55 @@ export default function CreditPurchasePage() {
                                     <span>{remainingSeconds > 0 ? translate("credits.payWithinTime", { value0: timeLeftText }) : translate("credits.orderExpiredHint")}</span>
                                 </div>
 
-                                {/* 支付宝前置模式页面把二维码画在视口左上角，尺寸正好等于 qrcode_width（后端 AlipayPaymentProvider.QRCODE_WIDTH=200），
-                                    iframe 必须与二维码等大，多出来的空间会全落到右下角、看起来不居中。 */}
-                                <div className="relative mx-auto mt-4 flex size-[240px] items-center justify-center rounded-xl border border-[var(--studio-line)] bg-white p-4 shadow-xs">
-                                    {paymentUrl ? (
-                                        isWechatPayment ? (
-                                            <QRCode value={paymentUrl} size={200} marginSize={4} bordered={false} color="#000000" bgColor="#ffffff" />
-                                        ) : (
-                                            <iframe src={paymentUrl} title={scanPayTitle} className="size-[200px] border-0" scrolling="no" />
-                                        )
-                                    ) : (
-                                        <LoaderCircle className="size-8 animate-spin text-[var(--studio-muted)]" />
-                                    )}
-                                    {remainingSeconds <= 0 ? (
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl bg-white/95 p-4 text-center backdrop-blur-xs">
-                                            <XCircle className="mb-2 size-8 text-rose-500" />
-                                            <span className="text-xs font-medium text-rose-600">{translate("credits.orderExpiredHint")}</span>
-                                        </div>
-                                    ) : null}
-                                </div>
-
-                                {paymentUrl && !isWechatPayment ? (
-                                    <a href={paymentUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-[var(--studio-action)] hover:underline">
-                                        <ExternalLink className="size-3" />
-                                        {translate("credits.openQrInNewTab")}
-                                    </a>
-                                ) : null}
-
-                                <div className="mt-4 flex flex-col items-center gap-1">
-                                    <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--studio-ink)]">
-                                        <ScanLine className="size-3.5 text-[var(--studio-primary)]" />
-                                        <span>{translate(isWechatPayment ? "credits.scanWithWechat" : "credits.scanWithAlipay")}</span>
+                                {isWaffoPayment ? (
+                                    <div className="mt-5 text-center">
+                                        <p className="text-sm text-[var(--studio-muted)]">{translate("credits.waffoCheckoutHint")}</p>
+                                        {paymentUrl && remainingSeconds > 0 ? (
+                                            <a href={paymentUrl} target="_blank" rel="noopener noreferrer" className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--studio-action)] px-4 py-3 font-medium text-white">
+                                                <ExternalLink className="size-4" />
+                                                {translate("credits.openWaffoCheckout")}
+                                            </a>
+                                        ) : null}
+                                        <p className="mt-4 text-xs text-[var(--studio-muted)]">{translate("credits.waffoConfirmationHint")}</p>
                                     </div>
-                                    <span className="text-[11px] text-[var(--studio-muted)]">{translate("credits.autoCloseAfterPaid")}</span>
-                                </div>
+                                ) : (
+                                    <>
+                                        {/* 支付宝前置模式页面把二维码画在视口左上角，尺寸正好等于 qrcode_width（后端 AlipayPaymentProvider.QRCODE_WIDTH=200），
+                                    iframe 必须与二维码等大，多出来的空间会全落到右下角、看起来不居中。 */}
+                                        <div className="relative mx-auto mt-4 flex size-[240px] items-center justify-center rounded-xl border border-[var(--studio-line)] bg-white p-4 shadow-xs">
+                                            {paymentUrl ? (
+                                                isWechatPayment ? (
+                                                    <QRCode value={paymentUrl} size={200} marginSize={4} bordered={false} color="#000000" bgColor="#ffffff" />
+                                                ) : (
+                                                    <iframe src={paymentUrl} title={scanPayTitle} className="size-[200px] border-0" scrolling="no" />
+                                                )
+                                            ) : (
+                                                <LoaderCircle className="size-8 animate-spin text-[var(--studio-muted)]" />
+                                            )}
+                                            {remainingSeconds <= 0 ? (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl bg-white/95 p-4 text-center backdrop-blur-xs">
+                                                    <XCircle className="mb-2 size-8 text-rose-500" />
+                                                    <span className="text-xs font-medium text-rose-600">{translate("credits.orderExpiredHint")}</span>
+                                                </div>
+                                            ) : null}
+                                        </div>
+
+                                        {paymentUrl && !isWechatPayment ? (
+                                            <a href={paymentUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-[var(--studio-action)] hover:underline">
+                                                <ExternalLink className="size-3" />
+                                                {translate("credits.openQrInNewTab")}
+                                            </a>
+                                        ) : null}
+
+                                        <div className="mt-4 flex flex-col items-center gap-1">
+                                            <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--studio-ink)]">
+                                                <ScanLine className="size-3.5 text-[var(--studio-primary)]" />
+                                                <span>{translate(isWechatPayment ? "credits.scanWithWechat" : "credits.scanWithAlipay")}</span>
+                                            </div>
+                                            <span className="text-[11px] text-[var(--studio-muted)]">{translate("credits.autoCloseAfterPaid")}</span>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>

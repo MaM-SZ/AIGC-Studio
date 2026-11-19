@@ -103,11 +103,12 @@ public class CreditPurchaseService {
                 .flatMap(userId -> userRepository.markFirstPurchaseBonusNoticeSeen(userId))));
     }
 
-    /**
-     * 查询当前启用的积分商品。
-     *
-     * @return Mono<CreditProductListResponse> 商品列表
-     */
+    /** 查询当前启用的支付渠道，不向前端暴露服务端凭据。 */
+    public Mono<List<String>> listPaymentMethods() {
+        return requirePlatform().then(Mono.fromSupplier(providerRegistry::enabledMethods));
+    }
+
+    /** 查询当前启用的积分商品。 */
     public Mono<PaymentDtos.CreditProductListResponse> listProducts() {
         return requirePlatform().then(Mono.defer(() -> purchaseRepository.listEnabledProducts().map(products ->
                 new PaymentDtos.CreditProductListResponse(products.stream().map(this::productResponse).toList()))));
@@ -248,8 +249,8 @@ public class CreditPurchaseService {
         }
         // 已关闭或已取消的订单直接返回当前状态，取消操作保持幂等。
         if (!"pending".equals(order.status())) return Mono.just(orderStatus(order));
-        // 微信关单前主动查单，先补齐已收款结果；关单不明时保留本地待支付状态。
-        Mono<PaymentDtos.CreditOrderStatusResponse> checked = "wechat".equals(order.paymentMethod())
+        // 关单前主动核对渠道状态；渠道尚未明确关闭时保留本地待支付状态。
+        Mono<PaymentDtos.CreditOrderStatusResponse> checked = ("wechat".equals(order.paymentMethod()) || "waffo".equals(order.paymentMethod()))
                 ? queryAndSettle(order) : Mono.just(orderStatus(order));
         return checked.flatMap(status -> {
             if ("paid".equals(status.status()) || "processing".equals(status.status())) {
@@ -299,6 +300,11 @@ public class CreditPurchaseService {
         return handleNotification("wechat", parameters).contextWrite(TeamScope.PLATFORM::apply);
     }
 
+    /** Waffo 原始回调进入平台钱包的幂等结算事务。 */
+    public Mono<Void> handleWaffoNotification(Map<String, String> parameters) {
+        return handleNotification("waffo", parameters).contextWrite(TeamScope.PLATFORM::apply);
+    }
+
     /**
      * 通过渠道验签后进入统一的幂等结算流程。
      * @param paymentMethod 接收通知的渠道
@@ -332,6 +338,20 @@ public class CreditPurchaseService {
                 .flatMapIterable(orders -> orders)
                 .concatMap(order -> refreshOrderStatus(order).onErrorResume(error -> {
                     log.error("后台核对微信支付订单失败，保留订单供下轮核对: orderNo={}", order.orderNo(), error);
+                    return Mono.empty();
+                }))
+                .then().contextWrite(TeamScope.PLATFORM::apply);
+    }
+
+    /** 后台核对 Waffo 待支付订单，回调负责按实收金额结算。 */
+    public Mono<Void> reconcileWaffoOrders() {
+        OffsetDateTime scanBefore = OffsetDateTime.now();
+        return purchaseRepository.listPendingWaffoOrders(0L, scanBefore, MAX_ORDER_PAGE_SIZE)
+                .expand(orders -> orders.size() < MAX_ORDER_PAGE_SIZE ? Mono.empty()
+                        : purchaseRepository.listPendingWaffoOrders(orders.getLast().id(), scanBefore, MAX_ORDER_PAGE_SIZE))
+                .flatMapIterable(orders -> orders)
+                .concatMap(order -> refreshOrderStatus(order).onErrorResume(error -> {
+                    log.error("后台核对 Waffo 支付订单失败，保留订单供下轮核对: orderNo={}", order.orderNo(), error);
                     return Mono.empty();
                 }))
                 .then().contextWrite(TeamScope.PLATFORM::apply);
@@ -383,6 +403,9 @@ public class CreditPurchaseService {
      * @return Mono<CreditOrderStatusResponse> 订单状态
      */
     private Mono<PaymentDtos.CreditOrderStatusResponse> refreshOrderStatus(CreditPurchaseRepository.Order order) {
+        // Waffo 收银台/PSP 可能仍在确认付款，只有渠道返回 canceled 才能关闭本地订单。
+        if ("waffo".equals(order.paymentMethod()) && "pending".equals(order.status())
+                && !order.expiresAt().isAfter(OffsetDateTime.now())) return queryAndSettle(order);
         if ("pending".equals(order.status()) && !order.expiresAt().isAfter(OffsetDateTime.now())) {
             // 过期前一刻可能刚好付完款，先向渠道确认一次，确认未支付才关单，避免钱付了单却关了。
             return providerRegistry.require(order.paymentMethod()).queryOrder(order.orderNo())
