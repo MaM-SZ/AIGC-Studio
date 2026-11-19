@@ -10,14 +10,14 @@ type TermsDialogProps = {
 };
 
 /** 生效日期，协议内容调整时同步更新。 */
-const TERMS_EFFECTIVE_DATE = "2026 年 11 月 13 日";
+const TERMS_EFFECTIVE_DATE = "2026 年 11 月 19 日";
 
 /** 服务协议正文。法务文本只维护中文版本，其他界面语言同样展示此版本。 */
 const TERMS_SECTIONS: Array<{ title: string; paragraphs: string[] }> = [
     {
         title: "一、协议的范围",
         paragraphs: [
-            "本协议是你与 Novanova Studio 运营方（以下称「本平台」）之间，就使用本平台提供的 AI 视觉创作服务所订立的协议。你注册、登录或使用本平台任一功能，即视为已阅读并同意本协议的全部内容。",
+            "本协议是你与 Dream Builder Studio 运营方（以下称「本平台」）之间，就使用本平台提供的 AI 视觉创作服务所订立的协议。你注册、登录或使用本平台任一功能，即视为已阅读并同意本协议的全部内容。",
             "如你不同意本协议的任何条款，请停止注册或使用本平台。",
         ],
     },
@@ -116,7 +116,7 @@ const TERMS_SECTIONS: Array<{ title: string; paragraphs: string[] }> = [
 /** 服务协议弹窗：登录与注册共用的条款展示。 */
 export function TermsDialog({ open, onClose }: TermsDialogProps) {
     return (
-        <Modal open={open} onCancel={onClose} footer={null} width={640} centered title="Novanova Studio 服务协议" styles={{ body: { maxHeight: "62vh", overflowY: "auto" } }}>
+        <Modal open={open} onCancel={onClose} footer={null} width={640} centered title="Dream Builder Studio 服务协议" styles={{ body: { maxHeight: "62vh", overflowY: "auto" } }}>
             <p className="mb-4 text-xs text-[var(--studio-muted)]">生效日期：{TERMS_EFFECTIVE_DATE}</p>
             <div className="space-y-4 text-[13px] leading-relaxed text-[var(--studio-text)]">
                 {TERMS_SECTIONS.map((section) => (
