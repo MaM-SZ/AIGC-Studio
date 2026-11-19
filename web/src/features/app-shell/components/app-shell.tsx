@@ -96,23 +96,26 @@ export function AppShell({ children }: { children: ReactNode }) {
                             </Link>
                         )}
                         <CommunityMenu className="studio-glass inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-[var(--studio-muted)] transition hover:bg-[var(--studio-surface-hover)] hover:text-[var(--studio-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--studio-action)]" />
-                        <Link
-                            href="/editions"
-                            className="studio-glass inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-[var(--studio-muted)] transition hover:bg-[var(--studio-surface-hover)] hover:text-[var(--studio-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--studio-action)]"
-                            aria-label={translate("appShell.compareEditions")}
-                            title={translate("appShell.compareEditions")}
-                        >
-                            <Layers3 className="size-4" aria-hidden="true" />
-                        </Link>
-                        <Link
-                            href={`/docs/${translate.locale}`}
-                            className="studio-glass inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-[var(--studio-muted)] transition hover:bg-[var(--studio-surface-hover)] hover:text-[var(--studio-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--studio-action)]"
-                            aria-label={translate("appShell.docs")}
-                            title={translate("appShell.docs")}
-                        >
-                            <BookOpen className="size-4" aria-hidden="true" />
-                        </Link>
-                        <GitHubLink className="studio-glass inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-[var(--studio-muted)] hover:bg-[var(--studio-surface-hover)] hover:text-[var(--studio-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--studio-action)]" />
+                        {/* 暂时隐藏版本对比、文档和 GitHub 入口。 */}
+                        <div className="hidden">
+                            <Link
+                                href="/editions"
+                                className="studio-glass inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-[var(--studio-muted)] transition hover:bg-[var(--studio-surface-hover)] hover:text-[var(--studio-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--studio-action)]"
+                                aria-label={translate("appShell.compareEditions")}
+                                title={translate("appShell.compareEditions")}
+                            >
+                                <Layers3 className="size-4" aria-hidden="true" />
+                            </Link>
+                            <Link
+                                href={`/docs/${translate.locale}`}
+                                className="studio-glass inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-[var(--studio-muted)] transition hover:bg-[var(--studio-surface-hover)] hover:text-[var(--studio-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--studio-action)]"
+                                aria-label={translate("appShell.docs")}
+                                title={translate("appShell.docs")}
+                            >
+                                <BookOpen className="size-4" aria-hidden="true" />
+                            </Link>
+                            <GitHubLink className="studio-glass inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-[var(--studio-muted)] hover:bg-[var(--studio-surface-hover)] hover:text-[var(--studio-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--studio-action)]" />
+                        </div>
                     </div>
                     <UserCreditMenu className="shrink-0" tourAnchor="user-menu" />
                 </div>
