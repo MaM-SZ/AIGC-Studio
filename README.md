@@ -11,10 +11,10 @@
 </p>
 
 <p align="center">
-  <a href="https://www.novanovastudio.cn/">>>>>如果觉得部署麻烦、找便宜渠道麻烦->点我在线体验 <<<<<</a> <br>
-  <a href="https://www.novanovastudio.cn/">🚀seedance2.0系列最低4折官转API🚀</a><br>
-  <a href="https://www.novanovastudio.cn/">🚀minmax-h3 高清 最低6分钱一秒🚀</a><br>
-  <a href="https://www.novanovastudio.cn/">🚀gpt-image-2.5 最低一毛五一张🚀</a>
+  <a href="https://dreambuilder.art/">>>>>如果觉得部署麻烦、找便宜渠道麻烦->点我在线体验 <<<<<</a> <br>
+  <a href="https://dreambuilder.art/">🚀seedance2.0系列最低4折官转API🚀</a><br>
+  <a href="https://dreambuilder.art/">🚀minmax-h3 高清 最低6分钱一秒🚀</a><br>
+  <a href="https://dreambuilder.art/">🚀gpt-image-2.5 最低一毛五一张🚀</a>
 </p>
 
 <p align="center">
@@ -90,7 +90,7 @@
 
 ## 🚀 在线文档
 
-[文档](https://www.novanovastudio.cn/docs/zh-cn)
+[文档](https://dreambuilder.art/docs/zh-cn)
 
 
 ## ✨ 项目定位

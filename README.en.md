@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.novanovastudio.cn/">>>>> Try it online if deployment or finding affordable providers feels cumbersome <<<<</a>
+  <a href="https://dreambuilder.art/">>>>> Try it online if deployment or finding affordable providers feels cumbersome <<<<</a>
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@
 
 ## 🚀 Docs
 
-[Docs](https://www.novanovastudio.cn/docs/en)
+[Docs](https://dreambuilder.art/docs/en)
 
 
 ## ✨ What It Is
