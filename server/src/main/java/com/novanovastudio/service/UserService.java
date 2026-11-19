@@ -17,6 +17,7 @@ import com.novanovastudio.repository.UserRepository;
 import com.novanovastudio.security.CurrentUserProvider;
 import com.novanovastudio.security.PasswordLoginLockService;
 import com.novanovastudio.security.TokenService;
+import com.novanovastudio.storage.MediaAccessService;
 import com.novanovastudio.task.AiTaskEventPublisher;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
@@ -51,6 +52,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.reactive.TransactionalOperator;
 import org.springframework.util.StringUtils;
 import org.springframework.web.util.UriComponentsBuilder;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -124,6 +126,9 @@ public class UserService {
 
     /** 当前用户提供器 */
     private final CurrentUserProvider currentUserProvider;
+
+    /** 私有存储桶读地址签发 */
+    private final MediaAccessService mediaAccessService;
 
     /** 密码登录锁定服务 */
     private final PasswordLoginLockService passwordLoginLockService;
@@ -232,13 +237,16 @@ public class UserService {
         // 注册前统一校验邮箱、密码和邮箱占用状态。
         String email = normalizeEmail(request.email());
         emailRegistrationPolicy.validate(email);
-        log.info("用户注册: email={}", email);
+        // 合并登录注册后，用户可能先填了用户名再补邮箱，注册沿用该用户名；未填时与过去一致使用邮箱。
+        String username = request.username() == null || request.username().isBlank() ? email : AccountIdentifier.username(request.username());
+        log.info("用户注册: email={}, username={}", email, username);
         validatePassword(request.password());
         return invitationService.resolveInviterUserId(request.invitationCode())
                 .map(Optional::of)
                 .defaultIfEmpty(Optional.empty())
                 .flatMap(inviterUserId -> userRepository.findByEmail(email)
                 .flatMap(existing -> Mono.<UserDtos.AuthResponse>error(new BusinessException(ErrorCode.BUSINESS_ERROR, SystemMessage.of("business.emailAlreadyRegistered"))))
+                .switchIfEmpty(Mono.defer(() -> rejectTakenUsername(username, email)))
                 .switchIfEmpty(userRepository.latestValidEmailCode(email, CODE_PURPOSE_REGISTER)
                         .switchIfEmpty(Mono.error(new BusinessException(ErrorCode.BUSINESS_ERROR, SystemMessage.of("business.emailCodeIsInvalidOrExpired"))))
                         .flatMap(codeRecord -> matchesPassword(request.code().trim(), codeRecord.getCodeHash())
@@ -249,7 +257,7 @@ public class UserService {
                                     return encodePassword(request.password())
                                             .flatMap(passwordHash -> {
                                                 User user = new User();
-                                                user.setUsername(email);
+                                                user.setUsername(username);
                                                 user.setPassword(passwordHash);
                                                 user.setEmail(email);
                                                 user.setNickname(firstNonEmpty(request.nickname(), emailName(email)));
@@ -263,9 +271,26 @@ public class UserService {
                                                                 .then(inviterUserId.map(inviterId -> creditService.grantInvitationReward(inviterId, userId)).orElseGet(Mono::empty))
                                                                 .then(userRepository.findById(userId)))
                                                         .as(transactionalOperator::transactional)
-                                                        .map(this::buildAuthResponse);
+                                                        .flatMap(this::buildAuthResponse);
                                             });
                                 }))));
+    }
+
+    /**
+     * 用户名已被占用时阻止注册。
+     * <p>
+     * 沿用邮箱作为用户名时直接跳过：邮箱占用已由调用方的邮箱检查覆盖，重复查询没有意义。
+     *
+     * @param username String 注册用户名
+     * @param email String 注册邮箱
+     * @return Mono<AuthResponse> 被占用时返回业务错误，可用时为空
+     */
+    private Mono<UserDtos.AuthResponse> rejectTakenUsername(String username, String email) {
+        if (username.equals(email)) {
+            return Mono.empty();
+        }
+        return userRepository.findByUsername(username)
+                .flatMap(existing -> Mono.<UserDtos.AuthResponse>error(new BusinessException(ErrorCode.BUSINESS_ERROR, SystemMessage.of("business.accountAlreadyExists"))));
     }
 
     /**
@@ -278,8 +303,9 @@ public class UserService {
         // 账号类型在查询前确定，密码错误后不尝试另一种标识。
         AccountIdentifier account = AccountIdentifier.parse(request.account());
         log.info("用户登录: account={}", account.value());
+        // 登录与注册已合并为同一入口：账号不存在时返回独立提示，前端据此引导补邮箱注册；密码错误仍与原来一致。
         return findAccount(account)
-                .switchIfEmpty(Mono.error(new BusinessException(ErrorCode.AUTH_ERROR, SystemMessage.of("business.incorrectAccountOrPassword"))))
+                .switchIfEmpty(Mono.error(new BusinessException(ErrorCode.AUTH_ERROR, SystemMessage.of("business.accountNotFound"))))
                 .flatMap(user -> passwordLoginLockService.remainingLockDuration(user.getId())
                         .flatMap(duration -> Mono.<UserDtos.AuthResponse>error(passwordLockException(duration)))
                         .switchIfEmpty(matchesPassword(request.password(), user.getPassword()).flatMap(matches -> {
@@ -359,7 +385,7 @@ public class UserService {
         return currentUserProvider.currentUserId()
                 .flatMap(userRepository::findById)
                 .switchIfEmpty(Mono.error(new BusinessException(ErrorCode.AUTH_ERROR, SystemMessage.of("business.userNotFound"))))
-                .map(this::userProfile);
+                .flatMap(this::userProfile);
     }
 
     /**
@@ -384,7 +410,7 @@ public class UserService {
                             }
                             return userRepository.findById(userId)
                                     .switchIfEmpty(Mono.error(new BusinessException(ErrorCode.AUTH_ERROR, SystemMessage.of("business.userNotFound"))))
-                                    .map(this::userProfile);
+                                    .flatMap(this::userProfile);
                         })
                         .doOnSuccess(profile -> log.info("用户资料已更新: userId={}", userId)))
                 .onErrorMap(DataIntegrityViolationException.class, exception -> new BusinessException(ErrorCode.BUSINESS_ERROR, SystemMessage.of("business.usernameAlreadyTaken")));
@@ -473,9 +499,9 @@ public class UserService {
         return userRepository.listUsers(normalizedPage, normalizedPageSize, keyword, userId, role, status, createdAfter, createdBefore)
                 .collectList()
                 .flatMap(users -> passwordLoginLockService.lockedUntilByUserIds(users.stream().map(User::getId).toList())
-                        .map(passwordLockedUntilByUserId -> users.stream()
-                                .map(user -> userProfile(user, passwordLockedUntilByUserId.get(user.getId()), user.getEmail() == null))
-                                .toList()))
+                        .flatMap(passwordLockedUntilByUserId -> Flux.fromIterable(users)
+                                .concatMap(user -> userProfile(user, passwordLockedUntilByUserId.get(user.getId()), user.getEmail() == null))
+                                .collectList()))
                 .zipWith(userRepository.countUsers(keyword, userId, role, status, createdAfter, createdBefore))
                 .map(tuple -> new UserDtos.UserListResponse(tuple.getT1(), tuple.getT2()));
     }
@@ -693,12 +719,13 @@ public class UserService {
      * 构建登录响应
      *
      * @param user User 用户信息
-     * @return AuthResponse 登录响应
+     * @return Mono<AuthResponse> 登录响应
      */
-    private UserDtos.AuthResponse buildAuthResponse(User user) {
+    private Mono<UserDtos.AuthResponse> buildAuthResponse(User user) {
         // 使用当前用户ID和角色签发令牌，再拼装前端依赖的登录响应结构。
         TokenService.SignedToken signedToken = tokenService.sign(user.getId(), user.getRole(), user.getTokenVersion());
-        return new UserDtos.AuthResponse(signedToken.token(), TOKEN_TYPE_BEARER, formatTime(signedToken.expiresAt()), userProfile(user));
+        return userProfile(user)
+                .map(profile -> new UserDtos.AuthResponse(signedToken.token(), TOKEN_TYPE_BEARER, formatTime(signedToken.expiresAt()), profile));
     }
 
     /**
@@ -712,7 +739,7 @@ public class UserService {
             return Mono.error(new BusinessException(ErrorCode.AUTH_ERROR, SystemMessage.of("business.accountDisabled")));
         }
         OffsetDateTime loginTime = OffsetDateTime.now(ZoneOffset.UTC);
-        return userRepository.updateLastLoginAt(user.getId()).then(Mono.fromSupplier(() -> {
+        return userRepository.updateLastLoginAt(user.getId()).then(Mono.defer(() -> {
             user.setLastLoginAt(loginTime);
             return buildAuthResponse(user);
         }));
@@ -722,9 +749,9 @@ public class UserService {
      * 转换用户公开资料
      *
      * @param user User 用户信息
-     * @return UserProfile 用户公开资料
+     * @return Mono<UserProfile> 用户公开资料
      */
-    private UserDtos.UserProfile userProfile(User user) {
+    private Mono<UserDtos.UserProfile> userProfile(User user) {
         return userProfile(user, null, false);
     }
 
@@ -734,27 +761,28 @@ public class UserService {
      * @param user User 用户信息
      * @param passwordLockedUntil OffsetDateTime 密码锁定截止时间
      * @param canResetPassword 是否可由当前管理入口重置密码
-     * @return UserProfile 用户公开资料
+     * @return Mono<UserProfile> 用户公开资料
      */
-    private UserDtos.UserProfile userProfile(User user, OffsetDateTime passwordLockedUntil, boolean canResetPassword) {
-        // 只返回前端需要的公开字段，密码哈希等敏感字段不进入响应。
-        return new UserDtos.UserProfile(
-                user.getId(),
-                nullToEmpty(user.getEmail()),
-                nullToEmpty(user.getUsername()),
-                firstNonEmpty(user.getNickname(), user.getUsername()),
-                nullToEmpty(user.getAvatar()),
-                nullToEmpty(user.getRole()),
-                user.getStatus(),
-                user.getCreditBalance(),
-                formatTime(user.getCreatedAt()),
-                formatTime(user.getLastLoginAt()),
-                user.getWelcomeReadAt() != null,
-                user.getOnboardingVersion() == null ? 0 : user.getOnboardingVersion(),
-                user.getCreationTourVersion() == null ? 0 : user.getCreationTourVersion(),
-                passwordLockedUntil == null ? null : formatTime(passwordLockedUntil),
-                canResetPassword
-        );
+    private Mono<UserDtos.UserProfile> userProfile(User user, OffsetDateTime passwordLockedUntil, boolean canResetPassword) {
+        // 只返回前端需要的公开字段，密码哈希等敏感字段不进入响应；头像在响应前按预览用途现签，数据库保留原始地址。
+        return mediaAccessService.signUrl(nullToEmpty(user.getAvatar()), MediaAccessService.Purpose.PREVIEW)
+                .map(avatar -> new UserDtos.UserProfile(
+                        user.getId(),
+                        nullToEmpty(user.getEmail()),
+                        nullToEmpty(user.getUsername()),
+                        firstNonEmpty(user.getNickname(), user.getUsername()),
+                        avatar,
+                        nullToEmpty(user.getRole()),
+                        user.getStatus(),
+                        user.getCreditBalance(),
+                        formatTime(user.getCreatedAt()),
+                        formatTime(user.getLastLoginAt()),
+                        user.getWelcomeReadAt() != null,
+                        user.getOnboardingVersion() == null ? 0 : user.getOnboardingVersion(),
+                        user.getCreationTourVersion() == null ? 0 : user.getCreationTourVersion(),
+                        passwordLockedUntil == null ? null : formatTime(passwordLockedUntil),
+                        canResetPassword
+                ));
     }
 
     /**
@@ -934,13 +962,13 @@ public class UserService {
      */
     private Mono<Void> sendPasswordResetEmail(String email, String resetUrl) {
         return Mono.fromRunnable(() -> {
-            if (!StringUtils.hasText(properties.getEmail().getFrom())) {
+            if (!properties.emailSettings().configured()) {
                 throw new IllegalStateException("邮箱服务未配置，无法发送密码重置邮件");
             }
             try {
                 MimeMessage message = mailSender.createMimeMessage();
                 MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
-                helper.setFrom(properties.getEmail().getFrom());
+                helper.setFrom(properties.emailSettings().fromEmail());
                 helper.setTo(email);
                 helper.setSubject(MAIL_BRAND_NAME + " 重置密码");
                 helper.setText(buildPasswordResetEmailHtml(resetUrl), true);
@@ -1029,14 +1057,14 @@ public class UserService {
     private Mono<Void> sendEmailVerificationCode(String email, String code) {
         // 邮件发送属于阻塞IO，放入boundedElastic执行。
         return Mono.fromRunnable(() -> {
-            if (!StringUtils.hasText(properties.getEmail().getFrom())) {
+            if (!properties.emailSettings().configured()) {
                 throw new IllegalStateException("邮箱服务未配置，无法发送验证码");
             }
             try {
                 // 组装邮件主题和正文，并通过JavaMail发送验证码。
                 MimeMessage message = mailSender.createMimeMessage();
                 MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
-                helper.setFrom(properties.getEmail().getFrom());
+                helper.setFrom(properties.emailSettings().fromEmail());
                 helper.setTo(email);
                 helper.setSubject(MAIL_BRAND_NAME + " 登录验证码");
                 helper.setText(buildVerificationEmailHtml(code), true);

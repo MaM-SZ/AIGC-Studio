@@ -23,7 +23,8 @@ import { saveAs } from "file-saver";
 import { requestEdit, requestGeneration, requestImageQuestion } from "@/features/generation/api/image";
 import { requestVideoGeneration, storeGeneratedVideo } from "@/features/generation/api/video";
 import { composeStoryboardPrompts, createStoryboardAssetImageTask, generateStoryboard, readStoryboardAssetImage } from "@/services/api/storyboard";
-import { cancelAiTask, createAiTask, getAiTaskInfo, readAiTaskError, subscribeAiTaskDeltas, waitAiTask, type AiTaskErrorDetails, type GenerationStyleSnapshot, type SkillOption } from "@/services/api/server";
+import { cancelAiTasksWithRefundPolicy, isSubmittedMediaTask, runCancelWithProviderRequestPolicy } from "@/features/generation/lib/cancel-provider-generation";
+import { cancelAiTask, createAiTask, getAiTaskInfo, markGenerationCancelForfeit, readAiTaskError, subscribeAiTaskDeltas, waitAiTask, type AiTaskErrorDetails, type GenerationStyleSnapshot, type SkillOption } from "@/services/api/server";
 import { cancelCompositionTask, composeVideo, waitVideoCompositionTask, type VideoCompositionTask } from "@/services/api/video-composition";
 import { usePromptOptimization } from "@/features/generation/hooks/use-prompt-optimization";
 import { normalizeImageGenerationCount } from "@/features/generation/components/image-settings-panel";
@@ -166,6 +167,7 @@ import {
     type CanvasDirectorDeskNode,
     type CanvasDirectorDeskExportSource,
     type CanvasDirectorDeskProject,
+    type CanvasAssistantAction,
     type CanvasAssistantMessage,
     type CanvasAssistantSession,
     type CanvasConnection,
@@ -448,6 +450,8 @@ function CanvasWorkspacePage() {
     const [navigationPanelTab, setNavigationPanelTab] = useState<CanvasNavigationTab>("nodes");
     const [previewAsset, setPreviewAsset] = useState<CanvasNavigationAsset | null>(null);
     const [projectLoaded, setProjectLoaded] = useState(false);
+    /** 进入项目后图片等媒体地址还在后台换取，期间不把未水合的地址写回服务端。 */
+    const [hydratingMedia, setHydratingMedia] = useState(false);
     const [toolbarNodeId, setToolbarNodeId] = useState<string | null>(null);
     const [nodeImageSettingsOpen, setNodeImageSettingsOpen] = useState(false);
     const [dialogNodeId, setDialogNodeId] = useState<string | null>(null);
@@ -496,7 +500,7 @@ function CanvasWorkspacePage() {
         setNavigationPanelTab("nodes");
         setPreviewAsset(null);
     }, [projectId]);
-    const { start: startGenerationRequest, finish: finishGenerationRequest, stopByRunningId: stopRegisteredGenerationRequests, isRunning: isGenerationRunning } = useCanvasGenerationRequests();
+    const { start: startGenerationRequest, finish: finishGenerationRequest, stopByRunningId: stopRegisteredGenerationRequests, listTargetNodeIds: listGenerationTargetNodeIds, isRunning: isGenerationRunning } = useCanvasGenerationRequests();
 
     const nodesRef = useRef(nodes);
     const connectionsRef = useRef(connections);
@@ -584,16 +588,35 @@ function CanvasWorkspacePage() {
 
     const confirmStopGeneration = useCallback(
         (nodeId: string) => {
-            modal.confirm({
-                title: translate("canvas.stopGeneration_9f2951"),
-                content: translate("canvas.theCurrentGenerationRequestWillStopCompletedContentWill"),
-                okText: translate("canvas.stop"),
-                cancelText: translate("canvas.continueGenerating"),
-                okButtonProps: { danger: true },
-                onOk: () => stopGenerationByRunningId(nodeId),
-            });
+            void (async () => {
+                const targetIds = listGenerationTargetNodeIds(nodeId);
+                const nodesById = new Map(nodesRef.current.map((node) => [node.id, node]));
+                const taskIds = [...new Set(targetIds.flatMap((id) => {
+                    const taskId = nodesById.get(id)?.execution.taskId;
+                    return taskId ? [taskId] : [];
+                }))];
+                const tasks = await Promise.all(taskIds.map((taskId) => getAiTaskInfo(taskId).catch(() => null)));
+                const sent = tasks.some((task) => task && isSubmittedMediaTask(task));
+                modal.confirm({
+                    title: sent ? translate("generation.cancelWithoutRefund") : translate("canvas.stopGeneration_9f2951"),
+                    content: sent ? translate("generation.requestAlreadySentCancelKeepsTheCharge") : translate("canvas.theCurrentGenerationRequestWillStopCompletedContentWill"),
+                    okText: sent ? translate("generation.cancelWithoutRefundConfirm") : translate("canvas.stop"),
+                    cancelText: translate("canvas.continueGenerating"),
+                    okButtonProps: { danger: true },
+                    onOk: async () => {
+                        if (sent) {
+                            markGenerationCancelForfeit(taskIds);
+                            await Promise.all(taskIds.map((taskId) => cancelAiTask(taskId, { forfeitRefund: true })));
+                        } else {
+                            const outcome = await cancelAiTasksWithRefundPolicy(taskIds, modal);
+                            if (outcome === "declined") return;
+                        }
+                        stopGenerationByRunningId(nodeId);
+                    },
+                });
+            })().catch((error) => message.error(error instanceof Error ? error.message : translate("canvas.failedToStop")));
         },
-        [modal, stopGenerationByRunningId],
+        [listGenerationTargetNodeIds, message, modal, stopGenerationByRunningId],
     );
 
     const confirmUploadReferenceImages = useCallback(
@@ -693,18 +716,16 @@ function CanvasWorkspacePage() {
         }
 
         const restore = async () => {
-            const hydratedNodes = normalizeBackgroundBoardMembers(await hydrateCanvasImages(resetInterruptedCanvasNodes(document.scene.nodes)));
-            const restoredSessions = await hydrateAssistantImages(document.conversation.sessions);
-            const nodeIdSet = new Set(hydratedNodes.map((node) => node.id));
-            const backgroundNodeIdSet = new Set(hydratedNodes.filter(isBackgroundNode).map((node) => node.id));
+            const baseNodes = normalizeBackgroundBoardMembers(resetInterruptedCanvasNodes(document.scene.nodes));
+            const nodeIdSet = new Set(baseNodes.map((node) => node.id));
+            const backgroundNodeIdSet = new Set(baseNodes.filter(isBackgroundNode).map((node) => node.id));
             const restoredConnections = document.scene.connections.filter(
                 (connection) => nodeIdSet.has(connection.source.nodeId) && nodeIdSet.has(connection.target.nodeId) && !backgroundNodeIdSet.has(connection.source.nodeId) && !backgroundNodeIdSet.has(connection.target.nodeId),
             );
-            const restoredNodes = synchronizeVideoCompositionInputs(hydratedNodes, restoredConnections);
-            setNodes(restoredNodes);
-            // 过滤掉孤立边（源/目标节点不存在），防止 React Flow 报错。
+            // 先用项目里保存的地址直接进入画布，媒体签名在后台并行换取，避免等全部图片加载完才可见。
+            const initialNodes = synchronizeVideoCompositionInputs(baseNodes, restoredConnections);
+            setNodes(initialNodes);
             setConnections(restoredConnections);
-            setChatSessions(restoredSessions);
             setActiveChatId(document.conversation.activeSessionId);
             setBackgroundMode(document.preferences.background);
             setShowImageInfo(document.preferences.showImageInformation);
@@ -718,16 +739,28 @@ function CanvasWorkspacePage() {
                 historyCommitTimerRef.current = null;
             }
             lastHistoryRef.current = {
-                nodes: restoredNodes,
+                nodes: initialNodes,
                 connections: restoredConnections,
-                chatSessions: restoredSessions,
+                chatSessions: [],
                 activeChatId: document.conversation.activeSessionId,
                 backgroundMode: document.preferences.background,
                 showImageInfo: document.preferences.showImageInformation,
             };
             setHistoryState({ canUndo: false, canRedo: false });
+            setHydratingMedia(true);
             setProjectLoaded(true);
-            return restoredNodes;
+
+            const [hydratedNodes, restoredSessions] = await Promise.all([
+                hydrateCanvasImages(baseNodes),
+                hydrateAssistantImages(document.conversation.sessions),
+            ]);
+            const refreshedNodes = synchronizeVideoCompositionInputs(hydratedNodes, restoredConnections);
+            // 只回填媒体地址，保留用户在水合期间做的拖拽和编辑。
+            setNodes((currentNodes) => mergeHydratedMedia(currentNodes, refreshedNodes));
+            setChatSessions(restoredSessions);
+            setActiveChatId(document.conversation.activeSessionId);
+            setHydratingMedia(false);
+            return refreshedNodes;
         };
         void restore().then(async (restoredNodes) => {
             const loadingStoryboardAssetNodes = restoredNodes.filter((node): node is CanvasStoryboardNode => isStoryboardNode(node) && node.storyboard.assetGeneration?.phase === "running");
@@ -823,7 +856,7 @@ function CanvasWorkspacePage() {
     }, [activeChatId, backgroundMode, chatSessions, connections, createHistoryEntry, nodes, projectLoaded, showImageInfo]);
 
     useEffect(() => {
-        if (!projectLoaded || historyPausedRef.current) return;
+        if (!projectLoaded || hydratingMedia || historyPausedRef.current) return;
         replaceScene(projectId, {
             nodes,
             connections,
@@ -833,7 +866,7 @@ function CanvasWorkspacePage() {
                 zoom: viewport.k,
             },
         });
-    }, [connections, nodes, projectId, projectLoaded, replaceScene, viewport]);
+    }, [connections, hydratingMedia, nodes, projectId, projectLoaded, replaceScene, viewport]);
 
     useEffect(() => {
         if (!projectLoaded) return;
@@ -851,12 +884,12 @@ function CanvasWorkspacePage() {
     }, [connections, nodes, projectLoaded]);
 
     useEffect(() => {
-        if (!projectLoaded || historyPausedRef.current) return;
+        if (!projectLoaded || hydratingMedia || historyPausedRef.current) return;
         replaceConversation(projectId, {
             sessions: chatSessions,
             activeSessionId: activeChatId,
         });
-    }, [activeChatId, chatSessions, projectId, projectLoaded, replaceConversation]);
+    }, [activeChatId, chatSessions, hydratingMedia, projectId, projectLoaded, replaceConversation]);
 
     useEffect(() => {
         if (!projectLoaded || historyPausedRef.current) return;
@@ -3295,14 +3328,14 @@ function CanvasWorkspacePage() {
         setNodes((prev) => prev.map((node) => (node.id === nodeId ? applyCanvasNodeAttributes(node, { fontSize }) : node)));
     }, []);
 
-    const handleUploadRequest = useCallback((nodeId?: string, position?: CanvasPoint) => {
+    const handleUploadRequest = useCallback((nodeId?: string, position?: CanvasPoint, accept?: string) => {
         if (nodeId && useCanvasUiStore.getState().uploadingNodeIds.has(nodeId)) return;
         const input = imageInputRef.current;
         const scope = mediaUploadScopeRef.current;
         if (!input || !scope || scope.controller.signal.aborted) return;
         uploadTargetRef.current = { nodeId, position: position || getCanvasCenter(), scope };
         input.multiple = !nodeId;
-        input.accept = nodeId && nodesRef.current.some((node) => node.id === nodeId && isAudioNode(node)) ? ".mp3,.wav,audio/mpeg,audio/wav" : "image/*,video/*,.mp3,.wav,audio/mpeg,audio/wav";
+        input.accept = accept || (nodeId && nodesRef.current.some((node) => node.id === nodeId && isAudioNode(node)) ? ".mp3,.wav,audio/mpeg,audio/wav" : "image/*,video/*,.mp3,.wav,audio/mpeg,audio/wav");
         input.click();
     }, [getCanvasCenter]);
 
@@ -3427,14 +3460,17 @@ function CanvasWorkspacePage() {
         [updateAssistantSession],
     );
 
+    const assistantActionsRef = useRef(new Map<string, CanvasAssistantAction>());
     const upsertAssistantMessage = useCallback(
         (sessionId: string, messageId: string, text: string) => {
+            const action = assistantActionsRef.current.get(messageId);
             updateAssistantSession(sessionId, (session) => {
                 const exists = session.messages.some((item) => item.id === messageId);
+                const assistantMessage: CanvasAssistantMessage = { id: messageId, role: "assistant", text, ...(action ? { action } : {}) };
                 return {
                     ...session,
                     title: session.messages.length ? session.title : text.slice(0, 18) || translate("canvas.newConversation"),
-                    messages: exists ? session.messages.map((item) => (item.id === messageId ? { ...item, role: "assistant" as const, text } : item)) : [...session.messages, { id: messageId, role: "assistant" as const, text }],
+                    messages: exists ? session.messages.map((item) => (item.id === messageId ? { ...item, ...assistantMessage } : item)) : [...session.messages, assistantMessage],
                     updatedAt: new Date().toISOString(),
                 };
             });
@@ -3490,12 +3526,15 @@ function CanvasWorkspacePage() {
         },
         onThoughtDelta,
         onThoughtComplete,
-        onTaskComplete: (_messageId, text) => {
+        onTaskComplete: (_messageId, text, action) => {
             resetThinkings();
             const sessionId = activeAgentSessionIdRef.current;
             if (!sessionId) return;
             const displayMessageId = activeAgentAssistantMessageIdRef.current || nanoid();
             activeAgentAssistantMessageIdRef.current = displayMessageId;
+            if (action?.type === "choice" && action.options?.length) {
+                assistantActionsRef.current.set(displayMessageId, { type: action.type, options: action.options });
+            }
             completeTextMessage(sessionId, displayMessageId, text);
         },
         onCanceled: () => {
@@ -5530,13 +5569,15 @@ function CanvasWorkspacePage() {
             {assistantMounted ? (
                 <CanvasChatPanel
                     onCollapse={closeAgent}
+                    onUploadImage={() => handleUploadRequest(undefined, undefined, "image/*")}
+                    onUploadVideo={() => handleUploadRequest(undefined, undefined, "video/mp4,video/quicktime,video/*")}
                     nodes={nodes}
                     onNodeDropRef={onNodeDropRef}
                     messages={activeSessionMessages}
                     completedThinkings={completedThinkings}
                     activeThinking={activeThinking}
                     onNewSession={handleCreateAgentSession}
-                    onStop={() => void cancelAgentMessage().catch((error) => message.error(error instanceof Error ? error.message : translate("canvas.failedToStop")))}
+                    onStop={() => void runCancelWithProviderRequestPolicy(modal, (forfeit) => cancelAgentMessage(forfeit)).catch((error) => message.error(error instanceof Error ? error.message : translate("canvas.failedToStop")))}
                     initialPrompt={initialPrompt}
                     sessionId={activeChatId}
                     onSend={async (text, references = [], generationStyleIds = [], generationStyles = [], agentText = text) => {
@@ -5603,6 +5644,8 @@ function CanvasWorkspacePage() {
                     config={config}
                     model={config.agentModel}
                     onModelChange={(model) => updateConfig("agentModel", model)}
+                    onImageModelChange={(model) => updateConfig("imageModel", model)}
+                    onVideoModelChange={(model) => updateConfig("videoModel", model)}
                     onMissingConfig={() => showMissingAiConfig("text")}
                 />
             ) : null}
@@ -5948,84 +5991,92 @@ async function withNodeImageObjectUrl<Result>(node: CanvasDomainNode, process: (
 }
 
 async function hydrateCanvasImages(nodes: CanvasDomainNode[]) {
-    const hydratedNodes: CanvasDomainNode[] = [];
-    for (const node of nodes) {
-        if (isTextNode(node)) {
-            hydratedNodes.push(node);
-            continue;
-        }
-        if (isStoryboardNode(node)) {
-            const assets = await Promise.all(
-                node.storyboard.assets.map(async (asset) => {
-                    const image = asset.image;
-                    if (!image) return asset;
-                    if (image.storageKey) return { ...asset, image: { ...image, source: await resolveImageUrl(image.storageKey, image.source) } };
-                    if (!image.source.startsWith("data:image/")) return asset;
-                    const uploaded = await uploadImage(image.source);
-                    return {
-                        ...asset,
-                        image: {
-                            source: uploaded.url,
-                            storageKey: uploaded.storageKey,
-                            mimeType: uploaded.mimeType,
-                            objectStorage: uploaded.objectStorage,
-                        },
-                    };
-                }),
-            );
-            hydratedNodes.push(updateStoryboardNodeData(node, { assets }));
-            continue;
-        }
-        if (isVideoCompositionNode(node)) {
-            hydratedNodes.push(node);
-            continue;
-        }
-        if (isDirectorDeskNode(node)) {
-            hydratedNodes.push(node);
-            continue;
-        }
-        if (isBackgroundNode(node)) {
-            hydratedNodes.push(node);
-            continue;
-        }
-        const source = node.content.source;
-        if (isVideoNode(node) || isAudioNode(node)) {
-            const mediaNode = node.content.storageKey ? applyCanvasNodeAttributes(node, { content: await resolveMediaUrl(node.content.storageKey, source) }) : node;
-            hydratedNodes.push(isVideoNode(mediaNode) && mediaNode.generation.audioReferences?.length ? applyCanvasNodeAttributes(mediaNode, { audioReferences: await resolveAudioReferences(mediaNode.generation.audioReferences) }) : mediaNode);
-            continue;
-        }
-        if (!source) {
-            hydratedNodes.push(node);
-            continue;
-        }
-        if (node.content.storageKey) hydratedNodes.push(applyCanvasNodeAttributes(node, { content: await resolveImageUrl(node.content.storageKey, source) }));
-        else if (source.startsWith("data:image/")) hydratedNodes.push(applyCanvasNodeAttributes(node, imageAttributes(await uploadImage(source))));
-        else hydratedNodes.push(node);
+    // 每个节点独立换取媒体地址，全部并行，避免节点多时逐个串行等待。
+    return Promise.all(nodes.map((node) => hydrateCanvasNode(node)));
+}
+
+/** 换取单个节点引用的媒体地址；不涉及媒体的节点原样返回。 */
+async function hydrateCanvasNode(node: CanvasDomainNode): Promise<CanvasDomainNode> {
+    if (isTextNode(node)) return node;
+    if (isStoryboardNode(node)) {
+        const assets = await Promise.all(
+            node.storyboard.assets.map(async (asset) => {
+                const image = asset.image;
+                if (!image) return asset;
+                if (image.storageKey) return { ...asset, image: { ...image, source: await resolveImageUrl(image.storageKey, image.source) } };
+                if (!image.source.startsWith("data:image/")) return asset;
+                const uploaded = await uploadImage(image.source);
+                return {
+                    ...asset,
+                    image: {
+                        source: uploaded.url,
+                        storageKey: uploaded.storageKey,
+                        mimeType: uploaded.mimeType,
+                        objectStorage: uploaded.objectStorage,
+                    },
+                };
+            }),
+        );
+        return updateStoryboardNodeData(node, { assets });
     }
-    return hydratedNodes;
+    if (isVideoCompositionNode(node) || isDirectorDeskNode(node) || isBackgroundNode(node)) return node;
+    const source = node.content.source;
+    if (isVideoNode(node) || isAudioNode(node)) {
+        const mediaNode = node.content.storageKey ? applyCanvasNodeAttributes(node, { content: await resolveMediaUrl(node.content.storageKey, source) }) : node;
+        return isVideoNode(mediaNode) && mediaNode.generation.audioReferences?.length
+            ? applyCanvasNodeAttributes(mediaNode, { audioReferences: await resolveAudioReferences(mediaNode.generation.audioReferences) })
+            : mediaNode;
+    }
+    if (!source) return node;
+    if (node.content.storageKey) return applyCanvasNodeAttributes(node, { content: await resolveImageUrl(node.content.storageKey, source) });
+    if (source.startsWith("data:image/")) return applyCanvasNodeAttributes(node, imageAttributes(await uploadImage(source)));
+    return node;
+}
+
+/** 媒体换取完成后只回填地址字段，保留用户在水合期间对节点位置、尺寸和文案的修改。 */
+function mergeHydratedMedia(currentNodes: CanvasDomainNode[], hydratedNodes: CanvasDomainNode[]) {
+    const hydratedById = new Map(hydratedNodes.map((node) => [node.id, node]));
+    return currentNodes.map((node) => {
+        const hydrated = hydratedById.get(node.id);
+        if (!hydrated || hydrated === node) return node;
+        if (isStoryboardNode(node) && isStoryboardNode(hydrated)) {
+            return updateStoryboardNodeData(node, { assets: hydrated.storyboard.assets });
+        }
+        if (isVideoNode(node) && isVideoNode(hydrated)) {
+            return applyCanvasNodeAttributes(node, { content: hydrated.content.source, audioReferences: hydrated.generation.audioReferences });
+        }
+        if (isImageNode(node) && isImageNode(hydrated)) {
+            return applyCanvasNodeAttributes(node, { content: hydrated.content.source });
+        }
+        if (isAudioNode(node) && isAudioNode(hydrated)) {
+            return applyCanvasNodeAttributes(node, { content: hydrated.content.source });
+        }
+        return node;
+    });
 }
 
 async function hydrateAssistantImages(sessions: CanvasAssistantSession[]) {
-    const hydratedSessions: CanvasAssistantSession[] = [];
-    for (const session of sessions) {
-        const hydratedMessages: CanvasAssistantMessage[] = [];
-        for (const assistantMessage of session.messages) {
-            const hydratedReferences = [];
-            for (const reference of assistantMessage.references || []) {
-                if (reference.storageKey) {
-                    hydratedReferences.push({ ...reference, dataUrl: await resolveImageUrl(reference.storageKey, reference.dataUrl) });
-                } else if (reference.dataUrl?.startsWith("data:image/")) {
-                    const storedImage = await uploadImage(reference.dataUrl);
-                    hydratedReferences.push({ ...reference, dataUrl: storedImage.url, storageKey: storedImage.storageKey, objectStorage: storedImage.objectStorage });
-                } else {
-                    hydratedReferences.push(reference);
-                }
-            }
-            hydratedMessages.push({ ...assistantMessage, references: hydratedReferences });
-        }
-        hydratedSessions.push({ ...session, messages: hydratedMessages });
-    }
-    return hydratedSessions;
+    // 会话里的附件同样并行换取地址，避免逐条串行等待。
+    return Promise.all(
+        sessions.map(async (session) => ({
+            ...session,
+            messages: await Promise.all(
+                session.messages.map(async (assistantMessage) => ({
+                    ...assistantMessage,
+                    references: await Promise.all(
+                        (assistantMessage.references || []).map(async (reference) => {
+                            if (reference.storageKey) return { ...reference, dataUrl: await resolveImageUrl(reference.storageKey, reference.dataUrl) };
+                            if (reference.dataUrl?.startsWith("data:image/")) {
+                                const storedImage = await uploadImage(reference.dataUrl);
+                                return { ...reference, dataUrl: storedImage.url, storageKey: storedImage.storageKey, objectStorage: storedImage.objectStorage };
+                            }
+                            return reference;
+                        }),
+                    ),
+                })),
+            ),
+        })),
+    );
 }
 
 function connectionHandlesForCreatedNode(id: string, sourceHandle: ConnectionHandle, connection: Omit<CanvasConnection, "id">): CanvasConnection {

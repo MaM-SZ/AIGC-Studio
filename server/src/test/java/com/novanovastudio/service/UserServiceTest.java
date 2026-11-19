@@ -61,14 +61,14 @@ class UserServiceTest {
     @org.junit.jupiter.params.provider.ValueSource(strings = {"a56fv43@vn-v55.com", "881txi4@kuailejianfei8.com", "user@qq.com.evil.com"})
     void shouldRejectUnsupportedEmailBeforeRegistration(String email) {
         TestContext context = testContext();
-        context.properties.getEmail().setAllowedSuffixes("qq.com,gmail.com");
+        context.properties.replaceEmailSettings(context.properties.emailSettings().withAllowedSuffixes("qq.com,gmail.com"));
 
         StepVerifier.create(Mono.defer(() -> context.service.sendEmailCode(new UserDtos.SendEmailCodeRequest(email))))
                 .expectErrorMatches(error -> error instanceof BusinessException businessException
                         && "business.emailSuffixNotAllowed".equals(businessException.getSystemMessage().key()))
                 .verify();
         StepVerifier.create(Mono.defer(() -> context.service.register(new UserDtos.RegisterRequest(
-                        email, "123456", "password123", "新用户", null))))
+                        email, "123456", "password123", "新用户", null, null))))
                 .expectErrorMatches(error -> error instanceof BusinessException businessException
                         && "business.emailSuffixNotAllowed".equals(businessException.getSystemMessage().key()))
                 .verify();
@@ -80,7 +80,7 @@ class UserServiceTest {
     @Test
     void shouldSendRegistrationCodeForAllowedEmail() {
         TestContext context = testContext();
-        context.properties.getEmail().setAllowedSuffixes("@QQ.COM");
+        context.properties.replaceEmailSettings(context.properties.emailSettings().withAllowedSuffixes("@QQ.COM"));
         when(context.userRepository.findByEmail("user@qq.com")).thenReturn(Mono.empty());
         when(context.passwordEncoder.encode(any())).thenReturn("code-hash");
         when(context.userRepository.createEmailCode(any())).thenReturn(Mono.just(3L));
@@ -121,7 +121,7 @@ class UserServiceTest {
                 .thenReturn(new TokenService.SignedToken("token", OffsetDateTime.now().plusHours(1)));
 
         StepVerifier.create(context.service.register(new UserDtos.RegisterRequest(
-                        "new@example.com", "123456", "password123", "新用户", "INVITATIONCODE01")))
+                        "new@example.com", "123456", "password123", "新用户", "INVITATIONCODE01", null)))
                 .expectNextCount(1)
                 .verifyComplete();
 
@@ -139,7 +139,7 @@ class UserServiceTest {
                 .thenReturn(Mono.error(new BusinessException(com.novanovastudio.common.ErrorCode.BUSINESS_ERROR, "邀请码无效")));
 
         StepVerifier.create(context.service.register(new UserDtos.RegisterRequest(
-                        "new@example.com", "123456", "password123", "新用户", "INVALIDCODE")))
+                        "new@example.com", "123456", "password123", "新用户", "INVALIDCODE", null)))
                 .expectError(BusinessException.class)
                 .verify();
 
@@ -155,7 +155,7 @@ class UserServiceTest {
         TestContext context = testContext();
         User user = normalUser(8L);
         context.properties.getApp().setFrontendBaseUrl("https://www.novanovastudio.cn");
-        context.properties.getEmail().setFrom("noreply@novanovastudio.cn");
+        context.properties.replaceEmailSettings(context.properties.emailSettings().withFromEmail("noreply@novanovastudio.cn"));
         when(context.userRepository.findByEmail("user@example.com")).thenReturn(Mono.just(user));
         when(context.userRepository.upsertPasswordResetToken(argThat(token -> token.getUserId().equals(8L)
                 && token.getTokenHash().length() == 64))).thenReturn(Mono.empty());
@@ -647,13 +647,13 @@ class UserServiceTest {
         verify(context.userRepository, never()).findByEmail(any());
     }
 
-    /** 用户名不存在或大小写不一致时统一拒绝，不再按邮箱查找。 */
+    /** 用户名不存在或大小写不一致时统一拒绝，不再按邮箱查找；提示为“尚未注册”以便前端引导补邮箱注册。 */
     @Test
     void shouldNotFallbackForUnknownUsername() {
         TestContext context = testContext();
         when(context.userRepository.findByUsername("creator")).thenReturn(Mono.empty());
         StepVerifier.create(context.service.login(new UserDtos.LoginRequest("creator", "password123")))
-                .expectErrorMatches(error -> error instanceof BusinessException && error.getMessage().equals("账号或密码错误")).verify();
+                .expectErrorMatches(error -> error instanceof BusinessException && error.getMessage().equals("该账号尚未注册")).verify();
         verify(context.userRepository, never()).findByEmail(any());
     }
 
@@ -727,8 +727,8 @@ class UserServiceTest {
         PasswordLoginLockService passwordLoginLockService = mock(PasswordLoginLockService.class);
         NovanovaProperties properties = new NovanovaProperties();
         properties.getApp().setFrontendBaseUrl("https://www.novanovastudio.cn");
-        properties.getEmail().setFrom("noreply@novanovastudio.cn");
-        properties.getEmail().setAllowedSuffixes("example.com");
+        properties.replaceEmailSettings(NovanovaProperties.RuntimeEmailSettings.defaults()
+                .withSmtpHost("smtp.example.com").withFromEmail("noreply@novanovastudio.cn").withAllowedSuffixes("example.com"));
         JavaMailSender mailSender = mock(JavaMailSender.class);
         CreditService creditService = mock(CreditService.class);
         InvitationService invitationService = mock(InvitationService.class);
@@ -736,7 +736,9 @@ class UserServiceTest {
         TransactionalOperator transactionalOperator = mock(TransactionalOperator.class);
         when(transactionalOperator.transactional(org.mockito.ArgumentMatchers.<Mono<Object>>any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        UserService service = new UserService(userRepository, passwordEncoder, tokenService, currentUserProvider, passwordLoginLockService, properties, new EmailRegistrationPolicy(properties), mailSender, creditService, invitationService, eventPublisher, transactionalOperator);
+        UserService service = new UserService(userRepository, passwordEncoder, tokenService, currentUserProvider,
+                com.novanovastudio.MediaAccessTestSupport.echo(), passwordLoginLockService, properties, new EmailRegistrationPolicy(properties),
+                mailSender, creditService, invitationService, eventPublisher, transactionalOperator);
         return new TestContext(service, userRepository, passwordEncoder, tokenService, currentUserProvider, passwordLoginLockService, properties, mailSender, creditService, invitationService, eventPublisher);
     }
 
