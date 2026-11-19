@@ -18,19 +18,19 @@
 </p>
 
 <p align="center">
-  <img src="https://ai-flow-1253318092.cos.ap-singapore.myqcloud.com/novanova-studio/docs/homepage2-compressed.webp" alt="Novanova Studio 首页截图">
+  <img src="github_images/homepage2-compressed.webp" alt="Novanova Studio 首页截图">
 </p>
 <p align="center">
-  <img src="https://ai-flow-1253318092.cos.ap-singapore.myqcloud.com/novanova-studio/docs/nova-s2.png" alt="Novanova Studio 画布截图">
+  <img src="github_images/nova-s2.png" alt="Novanova Studio 画布截图">
 </p>
 <p align="center">
-  <img src="https://ai-flow-1253318092.cos.ap-singapore.myqcloud.com/novanova-studio/docs/fgk.png" alt="Novanova Studio 画布截图">
+  <img src="github_images/fgk.png" alt="Novanova Studio 画布截图">
 </p>
 <p align="center">
-  <img src="https://ai-flow-1253318092.cos.ap-singapore.myqcloud.com/novanova-studio/docs/jbcz.png" alt="Novanova Studio 剧本创作">
+  <img src="github_images/jbcz.png" alt="Novanova Studio 剧本创作">
 </p>
 <p align="center">
-  <img src="https://ai-flow-1253318092.cos.ap-singapore.myqcloud.com/novanova-studio/docs/mjcz.png" alt="Novanova Studio 漫剧创作">
+  <img src="github_images/mjcz.png" alt="Novanova Studio 漫剧创作">
 </p>
 
 
@@ -48,10 +48,10 @@
   <tbody>
     <tr>
       <td align="center" width="33%">
-        <img src="https://ai-flow-1253318092.cos.ap-singapore.myqcloud.com/novanova-studio/docs/wechat_me.png" alt="作者微信二维码" width="220" />
+        <img src="github_images/wechat_me.png" alt="作者微信二维码" width="220" />
       </td>
       <td align="center" width="33%">
-        <img src="https://ai-flow-1253318092.cos.ap-singapore.myqcloud.com/novanova-studio/images/20261101/32c933ca50e4a6fcaf502fac.png" alt="交流群二维码" width="220" />
+        <img src="github_images/wechat-group-1113.png" alt="交流群二维码" width="220" />
       </td>
     </tr>
   </tbody>
@@ -69,7 +69,7 @@
   <tbody>
     <tr>
       <td align="center" width="33%">
-        <img src="https://ai-flow-1253318092.cos.ap-singapore.myqcloud.com/novanova-studio/sponsor/notoken.png" alt="notoken" width="220" />
+        <img src="github_images/sponsor/notoken.png" alt="notoken" width="220" />
       </td>
       <td align="left" width="33%">
         https://notoken.pro/ <br>
@@ -79,7 +79,7 @@
     </tr>
     <tr>
       <td align="center" width="33%">
-        <img src="https://ai-flow-1253318092.cos.ap-singapore.myqcloud.com/novanova-studio/sponsor/LL2.png" alt="notoken" width="220" />
+        <img src="github_images/sponsor/LL2.png" alt="notoken" width="220" />
       </td>
       <td align="left" width="33%">
         ll2.cn｜自营算力底座 · 官方直签批价。MiniMax-H3 0.05 元/秒（自部署 768P 满血）；deepseek-v4.1-flash 官方 4 折；Seedance 系列 7 折起；超分 0.018 元/秒；Vega系列 6折起 注册链接：https://hub.ll2.cn?p=ua5r
@@ -142,7 +142,7 @@ flowchart LR
 - **对话式图片与视频生成**：在同一会话中完成生成、编辑、引用历史结果和继续迭代。
 - **多渠道模型配置**：在“配置与用户偏好”中维护 AI 渠道、模型能力、默认模型和积分消耗规则。
 - **素材与生成记录**：保存可复用资产、生成历史和提示词，减少重复上传与重复配置。
-- **对象存储接入**：支持腾讯云 COS、阿里云 OSS、七牛云 Kodo，用于上传素材与保存生成结果。
+- **对象存储接入**：支持腾讯云 COS、阿里云 OSS、七牛云 Kodo 和 [Cloudflare R2](docs-api/cloudflare-r2.md)，用于上传素材与保存生成结果。
 - **用户与运营能力**：邮箱登录、OAuth2 登录、积分、通知、提示词库、首页展示和管理员后台。
 - **异步任务机制**：Redis Stream 消费组、任务锁、失败恢复与 SSE 事件流支撑可追踪的长耗时任务。
 
@@ -199,7 +199,7 @@ Agent 不只是一次性调用模型，而是贯穿需求理解、工具选择�
 | Web | Next.js 16、React 19、TypeScript、Ant Design 6、Tailwind CSS、Zustand、React Flow | 创作工作台、对话、画布与配置界面。 |
 | 服务端 | Java 21、Spring Boot 3.5、Spring WebFlux、AgentScope Java、Fastjson2 | 响应式 API、Agent 编排、任务调度、鉴权与业务服务。 |
 | 数据与任务 | PostgreSQL 17、Flyway、R2DBC（响应式数据库连接）、Redis 8.6、Redis Stream | 用户、项目、任务、资产和生成记录持久化；异步任务分发与恢复。 |
-| AI 与存储 | OpenAI、Evolink、Gemini、Agnes、Anthropic、Seedance、MiniMax 格式渠道；COS、OSS、Kodo | 通过后台配置接入模型渠道和对象存储，而非把密钥放入浏览器。 |
+| AI 与存储 | OpenAI、Evolink、Gemini、Agnes、Anthropic、Seedance、MiniMax 格式渠道；COS、OSS、Kodo、R2 | 通过后台配置接入模型渠道和对象存储，而非把密钥放入浏览器。 |
 | 部署 | Docker Compose、Nginx、Node.js 22、Maven | 本地依赖服务、容器化构建与 Linux 服务器部署。 |
 
 ## 📁 目录说明

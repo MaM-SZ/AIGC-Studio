@@ -1,4 +1,4 @@
-export type ObjectStorageProvider = "tencentCos" | "aliyunOss" | "qiniuKodo" | "railwayS3";
+export type ObjectStorageProvider = "tencentCos" | "aliyunOss" | "qiniuKodo" | "railwayS3" | "cloudflareR2";
 
 export type ObjectStorageConfig = {
     id: string;
