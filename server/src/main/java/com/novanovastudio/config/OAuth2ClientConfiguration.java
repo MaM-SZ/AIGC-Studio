@@ -2,10 +2,15 @@ package com.novanovastudio.config;
 
 import com.novanovastudio.security.oauth2.ThirdPartyOAuth2Provider;
 import com.novanovastudio.security.oauth2.ThirdPartyOAuth2ProviderRegistry;
+import com.novanovastudio.security.oauth2.ThirdPartyOAuth2UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.oauth2.client.registration.ReactiveClientRegistrationRepository;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.client.userinfo.ReactiveOAuth2UserService;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 /**
@@ -17,6 +22,12 @@ import reactor.core.publisher.Mono;
 @Configuration
 @Slf4j
 public class OAuth2ClientConfiguration {
+
+    /** 创建登录用户资料读取器，由 Spring Security 的 OAuth2 登录流程自动使用。 */
+    @Bean
+    public ReactiveOAuth2UserService<OAuth2UserRequest, OAuth2User> reactiveOAuth2UserService(WebClient.Builder builder) {
+        return new ThirdPartyOAuth2UserService(builder.clone().build());
+    }
 
     /**
      * 创建响应式客户端注册仓储。

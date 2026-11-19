@@ -47,6 +47,8 @@ OAuth2 第三方登录（Google、linux.do）的启用状态与凭据从 `.env` 
 
 管理接口为 `/api/v1/config/oauth/listStandardOAuthProviders`、`createStandardOAuthProvider`、`updateStandardOAuthProvider`、`deleteStandardOAuthProvider`；登录入口复用 `/api/v1/auth/oauth/listProviders`、`/api/v1/auth/oauth/authorize/{registrationId}`。
 
+GitHub OAuth App 配置：授权端点 `https://github.com/login/oauth/authorize`，令牌端点 `https://github.com/login/oauth/access_token`，用户信息端点 `https://api.github.com/user`，客户端认证方式 `client_secret_post`，作用域 `read:user user:email`；用户标识、邮箱、昵称和头像字段分别为 `id`、`email`、`name`（或 `login`）、`avatar_url`。用户信息端点为上述 GitHub 地址时，登录流程额外调用 `https://api.github.com/user/emails`，使用 `primary=true` 且 `verified=true` 的邮箱回填 `email`，支持隐藏公开邮箱的用户；缺少邮箱授权或已验证主邮箱时拒绝登录，不回退到未经验证的邮箱。其他标准 OAuth2 渠道仍按原字段映射读取资料。
+
 ## 对外 OAuth2 授权客户端（企业版 V88、V89 / 社区版 V89、V90）
 
 本站作为 OAuth2 授权方，让 NewAPI 等外部系统用授权码登录本站账号。管理后台「系统管理 · 身份认证 · 对外授权」可维护多个客户端。不签发 `id_token`，也不提供 OIDC Discovery。

@@ -44,9 +44,12 @@ public class OAuth2LoginFailureHandler implements ServerAuthenticationFailureHan
      * @return String 固定前端错误码
      */
     private String oauth2ErrorCode(AuthenticationException exception) {
-        if (exception instanceof OAuth2AuthenticationException oauth2Exception
-                && "access_denied".equals(oauth2Exception.getError().getErrorCode())) {
-            return "accessDenied";
+        if (exception instanceof OAuth2AuthenticationException oauth2Exception) {
+            return switch (oauth2Exception.getError().getErrorCode()) {
+                case "access_denied" -> "accessDenied";
+                case "emailUnavailable" -> "emailUnavailable";
+                default -> "authorizationFailed";
+            };
         }
         return "authorizationFailed";
     }
