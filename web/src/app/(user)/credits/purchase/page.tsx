@@ -26,7 +26,7 @@ import { useSpaceBrand } from "@/features/team/use-space-brand";
 import Link, { useSearchParams } from "@/shared/lib/team-navigation";
 import { cn } from "@/shared/lib/utils";
 
-import { paymentPresentation } from "@/features/credits/payment-presentation";
+import { paymentPresentation, redirectHostedPayment } from "@/features/credits/payment-presentation";
 
 import { FirstPurchaseBonusModal } from "./first-purchase-bonus-modal";
 
@@ -170,7 +170,9 @@ export default function CreditPurchasePage() {
         setPaymentPriceAmount(response.priceAmount || fallbackPriceAmount);
         setExpiresAt(response.expiresAt || "");
         setRemainingSeconds(secondsUntil(response.expiresAt || ""));
-        setIsModalOpen(true);
+        if (!redirectHostedPayment(response.paymentMethod, response.paymentUrl, (url) => window.location.assign(url))) {
+            setIsModalOpen(true);
+        }
     };
 
     // 二维码一出现就开始轮询；取消后支付地址被清空，轮询自然停止。
@@ -198,7 +200,9 @@ export default function CreditPurchasePage() {
     // 刷新页面或从支付宝跳回后手里没有支付地址，按订单号重新签发一次。
     const openPayment = async () => {
         if (paymentUrl) {
-            setIsModalOpen(true);
+            if (!redirectHostedPayment(orderStatus?.paymentMethod || orderPaymentMethod, paymentUrl, (url) => window.location.assign(url))) {
+                setIsModalOpen(true);
+            }
             return;
         }
         if (!orderNo) return;
@@ -582,7 +586,7 @@ export default function CreditPurchasePage() {
                                     <div className="mt-5 text-center">
                                         <p className="text-sm text-[var(--studio-muted)]">{translate("credits.waffoCheckoutHint")}</p>
                                         {paymentUrl && remainingSeconds > 0 ? (
-                                            <a href={paymentUrl} target="_blank" rel="noopener noreferrer" className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--studio-action)] px-4 py-3 font-medium text-white">
+                                            <a href={paymentUrl} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--studio-action)] px-4 py-3 font-medium text-white">
                                                 <ExternalLink className="size-4" />
                                                 {translate("credits.openWaffoCheckout")}
                                             </a>
