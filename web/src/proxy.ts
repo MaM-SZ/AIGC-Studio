@@ -3,6 +3,14 @@ import { languageCookieMaxAge, languageCookieName, resolveWebsiteLocale } from "
 
 /** 请求入口统一解析语言，供服务端首屏和客户端共用。 */
 export function proxy(request: NextRequest) {
+    if (request.nextUrl.pathname.startsWith("/api/v1/")) {
+        const backend = process.env.NODE_ENV === "development" ? process.env.DEV_SERVER_PROXY_URL?.trim() : "";
+        if (!backend) return NextResponse.next();
+        const headers = new Headers(request.headers);
+        // 浏览器仅访问本地同源 API，由开发服务器向目标后端发送请求。
+        headers.delete("origin");
+        return NextResponse.rewrite(new URL(request.nextUrl.pathname + request.nextUrl.search, backend), { request: { headers } });
+    }
     const locale = resolveWebsiteLocale(request.nextUrl.pathname, request.cookies.get(languageCookieName)?.value, request.headers.get("accept-language"));
     const headers = new Headers(request.headers);
     headers.set("x-novanova-language", locale);
@@ -23,4 +31,4 @@ export function proxy(request: NextRequest) {
     return response;
 }
 
-export const config = { matcher: ["/((?!api|_next|.*\\..*).*)"] };
+export const config = { matcher: ["/api/v1/:path*", "/((?!api|_next|.*\\..*).*)"] };

@@ -11,6 +11,7 @@ import { getImageBlob, resolveImageUrl, uploadImage } from "@/features/storage/s
 import { saveAsset } from "@/services/api/server";
 import { usePaintBoard } from "./use-paint-board";
 import { saveDrawingAsset } from "./drawing-asset";
+import { BeautifyModal, type BeautySnapshot } from "./beautify-modal";
 import type { DrawingExport } from "../../../../integrations/paint-board/bridge";
 
 export default function HandDrawingPage() {
@@ -24,8 +25,10 @@ export default function HandDrawingPage() {
     const [keyword, setKeyword] = useState("");
     const [page, setPage] = useState(1);
     const [busy, setBusy] = useState(false);
+    const [beauty, setBeauty] = useState<BeautySnapshot | null>(null);
     const busyRef = useRef(false);
     const board = usePaintBoard((event) => {
+        if (event.action === "beautify") void openBeauty();
         if (event.action === "open-assets" && !busyRef.current) {
             setPickerOpen(true);
             setKeyword("");
@@ -55,7 +58,21 @@ export default function HandDrawingPage() {
         setBusy(false);
         setPickerOpen(false);
         setSaveOpen(false);
+        setBeauty(null);
     }, [board.frameKey]);
+
+    const openBeauty = async () => {
+        if (beauty || !begin()) return;
+        const isCurrent = board.captureContext();
+        try {
+            const drawing = await board.request<DrawingExport>("export", { requireContent: true });
+            if (isCurrent()) setBeauty({ drawing, isCurrent });
+        } catch (error) {
+            if (isCurrent()) message.error(error instanceof Error ? error.message : "画板读取失败，请重试");
+        } finally {
+            if (isCurrent()) end();
+        }
+    };
 
     const insert = async (asset: ImageAsset) => {
         if (!begin()) return;
@@ -106,6 +123,7 @@ export default function HandDrawingPage() {
     return (
         <div className="relative h-full min-h-0 overflow-hidden bg-[var(--studio-page)]">
             <iframe key={board.frameKey} ref={board.frameRef} src="/paint-board/index.html" title={translate("handDrawing.title")} onLoad={board.onLoad} allow="fullscreen" className="block h-full w-full border-0" />
+            {beauty && board.status === "ready" ? <BeautifyModal key={board.frameKey} snapshot={beauty} onClose={() => setBeauty(null)} onInsert={(image) => board.request("insert", { image })} /> : null}
             {board.status !== "ready" ? (
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[var(--studio-page)] text-[var(--studio-muted)]" role="status" aria-live="polite">
                     {board.status === "loading" ? (

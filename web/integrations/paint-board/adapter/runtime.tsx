@@ -109,6 +109,7 @@ export async function handleRequest(message: BridgeMessage): Promise<unknown> {
         return;
     }
     if (message.action === "export") {
+        if ((message.payload as { requireContent?: boolean } | undefined)?.requireContent && !paintBoard.canvas.getObjects().some((object) => object.visible !== false)) throw new Error("请先在画板中绘制内容");
         const { files, currentId } = useFileStore.getState();
         const file = files.find((item) => item.id === currentId);
         const colorIndex = file?.currentBackgroundColor ?? -1;

@@ -13,6 +13,7 @@ export default defineConfig({
     plugins: [react(), svgr()],
     resolve: {
         alias: [
+            { find: /^\.\/exportImageMenu$/, replacement: at("./adapter/export-image-menu.tsx") },
             { find: /^@\/components\/boardOperation\/templatePromptModal$/, replacement: at("./adapter/template-prompt-modal.tsx") },
             { find: /^@\/components\/toolPanel$/, replacement: at("./adapter/tool-panel.tsx") },
             { find: /^@\/components\/helpArea$/, replacement: at("./vendor/src/components/helpArea/helpModal/index.tsx") },

@@ -1,6 +1,6 @@
 /** 主应用和独立画板唯一共享的通信协议，不依赖两边的 React 或 store。 */
 export const CHANNEL = "novanova:paint-board:v1";
-export type Action = "init" | "sync" | "insert" | "export" | "flush" | "ready" | "open-assets" | "save-asset" | "fatal";
+export type Action = "init" | "sync" | "insert" | "export" | "flush" | "ready" | "open-assets" | "save-asset" | "beautify" | "fatal";
 export type BridgeMessage = {
     channel: typeof CHANNEL;
     type: "request" | "response" | "event";
@@ -12,7 +12,7 @@ export type BridgeMessage = {
 export type Environment = { scope: string; language: "zh" | "en"; dark: boolean; colors: Record<string, string> };
 export type DrawingExport = { image: Blob; title: string };
 
-const actions: readonly string[] = ["init", "sync", "insert", "export", "flush", "ready", "open-assets", "save-asset", "fatal"];
+const actions: readonly string[] = ["init", "sync", "insert", "export", "flush", "ready", "open-assets", "save-asset", "beautify", "fatal"];
 
 export function isTrustedMessage(event: { source: unknown; origin: string; data: unknown }, source: unknown, origin: string): event is typeof event & { data: BridgeMessage } {
     if (!source || event.source !== source || event.origin !== origin || !event.data || typeof event.data !== "object") return false;

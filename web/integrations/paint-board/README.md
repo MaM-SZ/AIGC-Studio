@@ -40,6 +40,13 @@
 - 离开页面前刷新当前工程并等待本地保存。页面隐藏或关闭时额外尝试刷新；浏览器强制终止、清理站点数据仍可能删除本地工程，可使用上游工程导出保留文件。
 - 云端资产只保存 PNG，不包含可继续编辑的工程，不提供多人协作或工程云同步。摄像头仍遵循主应用既有权限策略。
 
+## AI 美化
+
+- 导出菜单通过 Vite 的 `./exportImageMenu` 入口映射至 `adapter/export-image-menu.tsx`，在保存旁增加 AI 美化；上游源码保持不变。
+- 父页面导出当前涂鸦后，提供前后对照、渠道模型、风格、清晰度和选填描述。仅显示已有渠道中启用 `image-to-image` 能力的图片模型；透明区域只在发送给 AI 的参考图中补白，不修改原画。
+- 复用主应用上传、图生图任务、风格库、积分估算及取消退款策略，任务来源沿用 `canvas`。不新增后端接口、配置或密钥传递；用户和团队切换后丢弃旧结果。
+- 结果可重新生成、下载、保存为图片资产或插回画板（支持撤销）。保存等待服务器成功后才更新资产列表；失败保留结果和名称以便重试。
+
 ## 验证
 
 先在 `web/` 运行 `node integrations/paint-board/prepare.mjs`，再执行：
@@ -47,7 +54,7 @@
 ```sh
 # 主应用类型检查与集成测试
 pnpm exec tsc --noEmit
-pnpm test:node integrations/paint-board/bridge.test.ts integrations/paint-board/storage.test.ts 'src/app/(user)/hand-drawing/drawing-asset.test.ts'
+pnpm test:node integrations/paint-board/bridge.test.ts integrations/paint-board/storage.test.ts 'src/app/(user)/hand-drawing/drawing-asset.test.ts' 'src/app/(user)/hand-drawing/drawing-beautify.test.ts'
 
 # 在本目录使用独立依赖验证类型和上游测试
 cd integrations/paint-board

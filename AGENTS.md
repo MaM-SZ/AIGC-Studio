@@ -102,6 +102,7 @@
 
 
 # 本地构建和测试
+- 本地前端启动时优先沿用 `web/.env.local` 中已选定的后端，不要仅因发现其他运行端口就切换到独立测试实例。联调线上后端时，将 `NEXT_PUBLIC_SERVER_URL` 留空，通过 `DEV_SERVER_PROXY_URL` 配置同源开发代理，复用线上用户和模型渠道，避免浏览器跨域直连被拒绝。
 - powershell: `$env:JAVA_HOME="$env:USERPROFILE\.jabba\jdk\openjdk@21.0.2"; $env:PATH="$env:JAVA_HOME\bin;$env:PATH"; mvn compile -q`
 - Windows 测试出现 `Unable to establish loopback connection` 或 `UnixDomainSockets.connect` 的 `Invalid argument` 时，先在本项目 `server/target/` 下创建短路径套接字目录，再通过 Maven `-DargLine=-Djdk.net.unixdomain.tmpdir=该目录绝对路径` 仅为测试 JVM 指定目录；不要直接跳过网络测试，也不要修改全局 JDK 配置。
 - 运行 `mvn springboot:run`
