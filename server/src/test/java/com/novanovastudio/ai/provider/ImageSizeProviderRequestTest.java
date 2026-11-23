@@ -38,6 +38,43 @@ import reactor.test.StepVerifier;
 class ImageSizeProviderRequestTest {
 
     /**
+     * 图片接口不应固定附加供应商不支持的response_format参数。
+     *
+     * @param provider String 渠道格式
+     * @param editing boolean 是否携带参考图
+     */
+    @ParameterizedTest
+    @CsvSource({"openai,false", "openai,true", "newapi,false", "newapi,true"})
+    void shouldNotSendUnsupportedImageResponseFormat(String provider, boolean editing) {
+        AiHttpClient client = mock(AiHttpClient.class);
+        AiMediaSupport mediaSupport = mock(AiMediaSupport.class);
+        when(client.sendJsonRequest(any(), eq("POST"), eq("/images/generations"), any()))
+                .thenAnswer(invocation -> {
+                    Map<?, ?> payload = invocation.getArgument(3);
+                    Assertions.assertFalse(payload.containsKey("response_format"));
+                    Assertions.assertEquals("png", payload.get("output_format"));
+                    return Mono.just(new JSONObject(Map.of("data", List.of())));
+                });
+        when(client.formPart(anyString(), anyString())).thenAnswer(invocation -> new MultipartPart(
+                invocation.getArgument(0), null, null, invocation.<String>getArgument(1).getBytes(StandardCharsets.UTF_8)));
+        when(client.filePart(anyString(), anyString(), anyString(), any())).thenAnswer(invocation -> new MultipartPart(
+                invocation.getArgument(0), invocation.getArgument(1), invocation.getArgument(2), invocation.getArgument(3)));
+        when(client.sendMultipartRequest(any(), eq("/images/edits"), anyString(), anyList()))
+                .thenAnswer(invocation -> {
+                    List<MultipartPart> parts = invocation.getArgument(3);
+                    Assertions.assertFalse(parts.stream().anyMatch(part -> "response_format".equals(part.name())));
+                    Assertions.assertTrue(parts.stream().anyMatch(part -> "image".equals(part.name())));
+                    return Mono.just(new JSONObject(Map.of("data", List.of())));
+                });
+        when(mediaSupport.resolveReferenceBinary(any(), any(), anyString()))
+                .thenReturn(Mono.just(new GeneratedBinary(new byte[]{1}, "image/png")));
+
+        StepVerifier.create(adapter(provider, client, mediaSupport).execute(context(false, editing, new JSONObject(), null)))
+                .assertNext(result -> Assertions.assertNotNull(result.getJSONArray("items")))
+                .verifyComplete();
+    }
+
+    /**
      * 文生图和图生图的请求均应遵循当前模型的转换开关。
      *
      * @param provider String 渠道格式

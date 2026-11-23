@@ -115,8 +115,6 @@ public class OpenAiProviderAdapter implements AiProviderAdapter {
         payload.put("model", context.model());
         payload.put("prompt", context.request().prompt());
         payload.put("n", AiTaskParameterReader.intParameter(context.request().parameters(), "count", 1, 1, 10));
-        //response_format已弃用
-//        payload.put("response_format", "url");
         payload.put("output_format", "png");
         AiTaskParameterReader.putNonAuto(payload, context.request().parameters(), "quality");
         // 手写size优先，不为已覆盖的参数查询尺寸映射。
@@ -206,7 +204,6 @@ public class OpenAiProviderAdapter implements AiProviderAdapter {
                     parts.add(aiHttpClient.formPart("model", context.model()));
                     parts.add(aiHttpClient.formPart("prompt", context.request().prompt()));
                     parts.add(aiHttpClient.formPart("n", String.valueOf(AiTaskParameterReader.intParameter(context.request().parameters(), "count", 1, 1, 10))));
-                    parts.add(aiHttpClient.formPart("response_format", "url"));
                     parts.add(aiHttpClient.formPart("output_format", "png"));
                     String quality = AiTaskParameterReader.stringParameter(context.request().parameters(), "quality", "");
                     if (StringUtils.hasText(quality) && !"auto".equals(quality)) {
