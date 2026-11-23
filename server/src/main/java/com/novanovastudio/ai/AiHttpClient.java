@@ -357,19 +357,34 @@ public class AiHttpClient {
      * @return Mono<JSONObject> 响应JSON
      */
     public Mono<JSONObject> sendBearerJsonUrlRequest(AiTaskDtos.AiChannelConfig channel, String method, String url, Object payload) {
+        return sendBearerJsonUrlRequest(channel, method, url, payload, null);
+    }
+
+    /** 自定义请求头在服务端展开渠道密钥，覆盖同名默认头。 */
+    public Mono<JSONObject> sendBearerJsonUrlRequest(AiTaskDtos.AiChannelConfig channel, String method, String url, Object payload, String customHeaders) {
         return Mono.defer(() -> {
             String normalizedMethod = normalizeRequestMethod(method);
+            var headers = AiRequestHeaders.parse(customHeaders);
             return ensureProviderRequestAccepted(normalizedMethod).then(callBlocking(() -> {
             if (!StringUtils.hasText(channel.apiKey())) {
                 throw new BusinessException(ErrorCode.BUSINESS_ERROR, SystemMessage.of("business.serverAIChannelHasNoAPIKey"));
             }
             String jsonBody = "POST".equals(normalizedMethod) ? AiJsonUtils.toJson(payload) : "";
             HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofMinutes(10))
-                    .header("Authorization", "Bearer " + channel.apiKey().trim())
-                    .header("Content-Type", "application/json");
+                    .timeout(Duration.ofMinutes(10));
+            try {
+                builder.header("Authorization", "Bearer " + channel.apiKey().trim())
+                        .header("Content-Type", "application/json");
+                for (var entry : headers.entrySet()) {
+                    builder.setHeader(entry.getKey(), entry.getValue().replace("{{apiKey}}", channel.apiKey().trim()));
+                }
+            } catch (IllegalArgumentException exception) {
+                throw new BusinessException(ErrorCode.PARAM_INVALID, SystemMessage.of("business.invalidCustomRequestHeaders"));
+            }
             applyRequestMethod(builder, normalizedMethod, jsonBody);
-            HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            HttpRequest request = builder.build();
+            log.info("自定义模型HTTP请求: method={}, url={}, headerNames={}", normalizedMethod, url, request.headers().map().keySet());
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw AiErrorSupport.providerException(response.statusCode(), response.body(), requestStage(normalizedMethod));
             }

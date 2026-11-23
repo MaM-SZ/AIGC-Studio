@@ -959,6 +959,42 @@ class PersistenceServiceTest {
         Assertions.assertEquals(Boolean.TRUE, service.listModelConfigs().block().getFirst().customModelConfig().get("text-to-image").asyncQuery());
     }
 
+    /** 提交和查询请求头应分别保存并读回，密钥占位符不能在保存时展开。 */
+    @Test
+    void shouldRoundTripCustomRequestHeaders() {
+        when(repository.createPlatformAiModelConfig(org.mockito.ArgumentMatchers.any())).thenReturn(Mono.empty());
+        JSONObject data = imageCustomModelRequest(asyncImageGroup("/images/tasks/{{taskId}}", "data.url"));
+        JSONObject group = JSON.parseObject(JSON.toJSONString(data.get("customModelConfig"))).getJSONObject("text-to-image");
+        group.put("requestHeaders", "{\"X-DashScope-Async\":\"enable\"}");
+        group.put("queryHeaders", "{\"X-API-Key\":\"{{apiKey}}\"}");
+        data.put("customModelConfig", JSONObject.of("text-to-image", group));
+
+        service.createModelConfig(data.to(PersistenceDtos.CreateModelConfigRequest.class)).block();
+
+        var captor = ArgumentCaptor.forClass(PersistenceRecords.UserAiModelConfigRecord.class);
+        verify(repository).createPlatformAiModelConfig(captor.capture());
+        when(repository.listPlatformAiModelConfigs()).thenReturn(Flux.just(captor.getValue()));
+        var saved = service.listModelConfigs().block().getFirst().customModelConfig().get("text-to-image");
+        JSONObject actual = JSON.parseObject(JSON.toJSONString(saved));
+        Assertions.assertEquals(group.getString("requestHeaders"), actual.getString("requestHeaders"));
+        Assertions.assertEquals(group.getString("queryHeaders"), actual.getString("queryHeaders"));
+    }
+
+    /** 非对象、非字符串值或非法HTTP请求头必须在保存配置时拒绝。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"[]", "{\"X-Test\":1}", "{\"X-Test\":null}", "{\"Bad Header\":\"value\"}", "{\"X-Test\":\"bad\\r\\nvalue\"}"})
+    void shouldRejectInvalidCustomHeaders(String headers) {
+        org.mockito.Mockito.lenient().when(repository.createPlatformAiModelConfig(org.mockito.ArgumentMatchers.any())).thenReturn(Mono.empty());
+        JSONObject data = imageCustomModelRequest(asyncImageGroup("/images/tasks/{{taskId}}", "data.url"));
+        JSONObject group = JSON.parseObject(JSON.toJSONString(data.get("customModelConfig"))).getJSONObject("text-to-image");
+        group.put("requestHeaders", headers);
+        data.put("customModelConfig", JSONObject.of("text-to-image", group));
+
+        Assertions.assertThrows(BusinessException.class,
+                () -> service.createModelConfig(data.to(PersistenceDtos.CreateModelConfigRequest.class)).block());
+        verify(repository, org.mockito.Mockito.never()).createPlatformAiModelConfig(org.mockito.ArgumentMatchers.any());
+    }
+
     /** 构造带异步查询配置的图片分组，参数留空用于验证必填校验。 */
     private PersistenceDtos.CustomModelGroupConfig asyncImageGroup(String queryPath, String queryResultPath) {
         return new PersistenceDtos.CustomModelGroupConfig("/images/generations", "POST", "image-model", "{}", null, null, "data.task_id",

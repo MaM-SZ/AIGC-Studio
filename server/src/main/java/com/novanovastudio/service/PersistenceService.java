@@ -630,7 +630,8 @@ public class PersistenceService {
                     group.getString("queryResponseExample"),
                     group.getString("queryResultPath"),
                     group.getObject("videoGenerationConstraints", com.novanovastudio.dto.VideoGenerationConstraints.class),
-                    group.getBoolean("asyncQuery")));
+                    group.getBoolean("asyncQuery"),
+                    group.getString("requestHeaders"), group.getString("queryHeaders")));
         }
         return Map.copyOf(result);
     }
@@ -706,6 +707,8 @@ public class PersistenceService {
                 }
             }
             String queryMethod = normalizeCustomRequestMethod(group.queryMethod());
+            com.novanovastudio.ai.AiRequestHeaders.parse(group.requestHeaders());
+            com.novanovastudio.ai.AiRequestHeaders.parse(group.queryHeaders());
             if (asyncEnabled && !"GET".equals(queryMethod) && !StringUtils.hasText(group.queryRequestTemplate())
                     && !StringUtils.hasText(group.aiQueryPrompt())) {
                 throw new BusinessException(ErrorCode.PARAM_INVALID, SystemMessage.of("business.pOSTQueryRequiresAnExampleOrAIPrompt", key));
@@ -717,7 +720,7 @@ public class PersistenceService {
                     group.queryRequestTemplate(), group.aiQueryPrompt(),
                     group.queryResponseExample(), group.queryResultPath(), videoModel ? group.videoGenerationConstraints() : null,
                     // 同步态不落键，避免前端草稿与服务端回包在 null/false 之间反复判定为脏配置
-                    !videoModel && asyncEnabled ? Boolean.TRUE : null));
+                    !videoModel && asyncEnabled ? Boolean.TRUE : null, group.requestHeaders(), group.queryHeaders()));
         }
         // 启用的每个视频模式都必须配置，不能只遍历已提交的分组而遗漏整组缺失。
         if (videoModel) {

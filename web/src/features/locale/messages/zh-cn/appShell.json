@@ -1,4 +1,7 @@
 {
+    "requestHeaders": "提交请求头（JSON，可选）",
+    "queryHeaders": "查询请求头（JSON，可选）",
+    "customHeadersHint": "填写名称和值均为字符串的 JSON 对象；支持 '{{apiKey}}' 引用渠道密钥。同名请求头覆盖默认值，留空或填写 '{}' 使用默认请求头。",
     "defaultImageModel": "默认生图模型",
     "availableImageModels": "生图模型可选项",
     "defaultVideoModel": "默认视频模型",

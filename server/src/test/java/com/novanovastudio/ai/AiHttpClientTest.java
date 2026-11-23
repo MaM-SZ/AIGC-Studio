@@ -2,6 +2,7 @@ package com.novanovastudio.ai;
 
 import com.novanovastudio.common.BusinessException;
 import com.novanovastudio.dto.AiTaskDtos;
+import com.alibaba.fastjson2.JSONObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -313,6 +314,53 @@ class AiHttpClientTest {
                 () -> new AiHttpClient().sendJsonRequest(channel, "PATCH", "/tasks/task-1", null).block());
 
         Assertions.assertTrue(exception.getMessage().contains("不支持HTTP方法"));
+    }
+
+    /** 真实HTTP请求应展开密钥并忽略大小写覆盖默认头，不能追加重复鉴权。 */
+    @Test
+    void shouldSendCustomHeadersAndOverrideDefaults() throws IOException {
+        AtomicReference<com.sun.net.httpserver.Headers> headers = new AtomicReference<>();
+        HttpServer server = startJsonServer(200, "{}", exchange -> headers.set(exchange.getRequestHeaders()));
+        try {
+            var channel = new AiTaskDtos.AiChannelConfig("channel", "自定义", baseUrl(server), " secret-key ", "custom", List.of());
+            new AiHttpClient().sendBearerJsonUrlRequest(channel, "POST", baseUrl(server), JSONObject.of("prompt", "test"),
+                    "{\"X-DashScope-Async\":\"enable\",\"X-API-Key\":\"{{apiKey}}\",\"authorization\":\"Token {{apiKey}}\",\"content-type\":\"application/vnd.test+json\"}").block();
+
+            Assertions.assertEquals("enable", headers.get().getFirst("X-DashScope-Async"));
+            Assertions.assertEquals("secret-key", headers.get().getFirst("X-API-Key"));
+            Assertions.assertEquals(List.of("Token secret-key"), headers.get().get("Authorization"));
+            Assertions.assertEquals(List.of("application/vnd.test+json"), headers.get().get("Content-Type"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** 查询不继承提交请求头；缺少额外配置时保留原有默认请求头。 */
+    @Test
+    void shouldKeepSubmissionAndQueryHeadersIndependent() throws IOException {
+        AtomicReference<com.sun.net.httpserver.Headers> headers = new AtomicReference<>();
+        HttpServer server = startJsonServer(200, "{}", exchange -> headers.set(exchange.getRequestHeaders()));
+        try {
+            var channel = new AiTaskDtos.AiChannelConfig("channel", "自定义", baseUrl(server), "secret-key", "custom", List.of());
+            AiHttpClient client = new AiHttpClient();
+            client.sendBearerJsonUrlRequest(channel, "POST", baseUrl(server), new JSONObject(), "{\"X-DashScope-Async\":\"enable\"}").block();
+            client.sendBearerJsonUrlRequest(channel, "GET", baseUrl(server), null, "{}").block();
+            Assertions.assertNull(headers.get().getFirst("X-DashScope-Async"));
+            Assertions.assertEquals("Bearer secret-key", headers.get().getFirst("Authorization"));
+            client.sendBearerJsonUrlRequest(channel, "GET", baseUrl(server), null).block();
+            Assertions.assertEquals("application/json", headers.get().getFirst("Content-Type"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** 密钥展开后若产生非法请求头，错误消息不得暴露密钥。 */
+    @Test
+    void shouldRejectInvalidExpandedHeaderWithoutLeakingSecret() {
+        var channel = new AiTaskDtos.AiChannelConfig("channel", "自定义", "https://example.com", "secret\r\nkey", "custom", List.of());
+        BusinessException error = Assertions.assertThrows(BusinessException.class,
+                () -> new AiHttpClient().sendBearerJsonUrlRequest(channel, "POST", channel.baseUrl(), new JSONObject(), "{\"X-API-Key\":\"{{apiKey}}\"}").block());
+        Assertions.assertFalse(error.getMessage().contains("secret"));
     }
 
     /**

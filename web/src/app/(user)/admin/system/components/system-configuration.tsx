@@ -2580,6 +2580,20 @@ function CustomModelGroupEditor({ label, group, isVideo, onAutoFill, onChange }:
                 </div>
             ) : null}
             <div>
+                <div className="mb-1 text-xs text-[var(--studio-muted)]">{translate("appShell.requestHeaders")}</div>
+                <ModelConfigTextArea
+                    title={fieldTitle(translate("appShell.requestHeaders"))}
+                    value={current.requestHeaders || ""}
+                    minRows={2}
+                    maxRows={5}
+                    mono
+                    placeholder='{"X-DashScope-Async":"enable"}'
+                    placeholders={[{ label: "{{apiKey}}", value: "{{apiKey}}" }]}
+                    onChange={(value) => update({ requestHeaders: value })}
+                />
+                <p className="mt-1 text-xs text-[var(--studio-muted)]">{translate("appShell.customHeadersHint")}</p>
+            </div>
+            <div>
                 <div className="mb-1 text-xs text-[var(--studio-muted)]">{translate("appShell.responseExampleJSONStructure")}</div>
                 <ModelConfigTextArea
                     title={fieldTitle(translate("appShell.responseExample"))}
@@ -2641,6 +2655,20 @@ function CustomModelGroupEditor({ label, group, isVideo, onAutoFill, onChange }:
                             </div>
                         </div>
                     ) : null}
+                    <div>
+                        <div className="mb-1 text-xs text-[var(--studio-muted)]">{translate("appShell.queryHeaders")}</div>
+                        <ModelConfigTextArea
+                            title={fieldTitle(translate("appShell.queryHeaders"))}
+                            value={current.queryHeaders || ""}
+                            minRows={2}
+                            maxRows={5}
+                            mono
+                            placeholder='{"X-API-Key":"{{apiKey}}"}'
+                            placeholders={[{ label: "{{apiKey}}", value: "{{apiKey}}" }]}
+                            onChange={(value) => update({ queryHeaders: value })}
+                        />
+                        <p className="mt-1 text-xs text-[var(--studio-muted)]">{translate("appShell.customHeadersHint")}</p>
+                    </div>
                     <div>
                         <div className="mb-1 text-xs text-[var(--studio-muted)]">{translate("appShell.queryResponseExampleJSON")}</div>
                         <ModelConfigTextArea title={fieldTitle(translate("appShell.queryResponseExample"))} value={current.queryResponseExample} minRows={2} maxRows={6} mono onChange={(value) => update({ queryResponseExample: value })} />

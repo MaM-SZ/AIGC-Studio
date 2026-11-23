@@ -190,7 +190,7 @@ public class CustomProviderAdapter implements AiProviderAdapter {
         return bodyMono.flatMap(body -> {
                     log.info("自定义模型提交请求: taskId={}, taskType={}, mode={}, method={}, url={}, body={}", context.task().getId(), taskKind,
                             mode, method, url, abbreviate(body == null ? "" : body.toJSONString()));
-                    Mono<JSONObject> request = Mono.defer(() -> aiHttpClient.sendBearerJsonUrlRequest(context.channel(), method, url, body));
+                    Mono<JSONObject> request = Mono.defer(() -> aiHttpClient.sendBearerJsonUrlRequest(context.channel(), method, url, body, group.requestHeaders()));
                     if ("POST".equals(method)) {
                         return request;
                     }
@@ -283,7 +283,7 @@ public class CustomProviderAdapter implements AiProviderAdapter {
                                     bodyMono.flatMap(body -> {
                                         log.info("自定义模型查询轮询第{}次: taskId={}, providerTaskId={}, method={}, url={}, body={}",
                                                 attempt + 1, context.task().getId(), taskId, method, queryUrl, abbreviate(body == null ? "" : body.toJSONString()));
-                                        return aiHttpClient.sendBearerJsonUrlRequest(context.channel(), method, queryUrl, body)
+                                        return aiHttpClient.sendBearerJsonUrlRequest(context.channel(), method, queryUrl, body, group.queryHeaders())
                                                 // GOAWAY/连接重置等瞬态IO错误重发新连接即可恢复，不放大为任务失败
                                                 .retryWhen(Retry.max(2).filter(CustomProviderAdapter::isTransientNetworkError))
                                                 .doOnNext(response -> lastResponse.set(response))

@@ -48,12 +48,16 @@ export type CustomModelGroupConfig = {
     requestMethod: "GET" | "POST";
     requestModelName: string;
     requestTemplate: string;
+    /** 提交请求的额外HTTP头，JSON对象文本，支持{{apiKey}}。 */
+    requestHeaders?: string | null;
     aiRequestPrompt: string;
     responseExample: string;
     resultPath: string;
     queryPath: string;
     queryMethod: "GET" | "POST";
     queryRequestTemplate: string;
+    /** 轮询查询的额外HTTP头，独立于提交请求。 */
+    queryHeaders?: string | null;
     aiQueryPrompt: string;
     queryResponseExample: string;
     queryResultPath: string;

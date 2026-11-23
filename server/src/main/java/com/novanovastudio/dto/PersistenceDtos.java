@@ -67,13 +67,25 @@ public final class PersistenceDtos {
      * @param videoGenerationConstraints VideoGenerationConstraints 自定义视频模式的必填生成限制
      * @param asyncQuery Boolean 图片能力是否执行异步查询：true时提交响应按结果路径取出任务ID后轮询查询接口，
      *                   null或false为同步（残留的查询字段原样保留但不生效）；视频沿用查询字段非空即异步的判断，恒为null
+     * @param requestHeaders String 提交请求头JSON对象，值支持{{apiKey}}引用渠道密钥
+     * @param queryHeaders String 查询请求头JSON对象，与提交请求头独立
      */
     public record CustomModelGroupConfig(String requestPath, String requestMethod, String requestModelName,
                                          String requestTemplate, String aiRequestPrompt, String responseExample,
                                          String resultPath, String queryPath, String queryMethod,
                                          String queryRequestTemplate, String aiQueryPrompt, String queryResponseExample,
                                          String queryResultPath, VideoGenerationConstraints videoGenerationConstraints,
-                                         Boolean asyncQuery) {
+                                         Boolean asyncQuery, String requestHeaders, String queryHeaders) {
+        /** 未配置额外请求头时沿用默认鉴权和JSON内容类型。 */
+        public CustomModelGroupConfig(String requestPath, String requestMethod, String requestModelName,
+                String requestTemplate, String aiRequestPrompt, String responseExample, String resultPath,
+                String queryPath, String queryMethod, String queryRequestTemplate, String aiQueryPrompt,
+                String queryResponseExample, String queryResultPath, VideoGenerationConstraints videoGenerationConstraints,
+                Boolean asyncQuery) {
+            this(requestPath, requestMethod, requestModelName, requestTemplate, aiRequestPrompt, responseExample,
+                    resultPath, queryPath, queryMethod, queryRequestTemplate, aiQueryPrompt, queryResponseExample,
+                    queryResultPath, videoGenerationConstraints, asyncQuery, null, null);
+        }
         /**
          * 构造不包含视频限制的图片调用配置。
          * @param requestPath String 请求路径

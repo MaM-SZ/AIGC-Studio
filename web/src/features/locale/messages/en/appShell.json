@@ -1,4 +1,7 @@
 {
+    "requestHeaders": "Submission headers (JSON, optional)",
+    "queryHeaders": "Query headers (JSON, optional)",
+    "customHeadersHint": "Enter a JSON object with string names and values. Use '{{apiKey}}' for the channel key. Matching headers override defaults; leave blank or enter '{}' to use defaults.",
     "defaultImageModel": "Default image model",
     "availableImageModels": "Available image models",
     "defaultVideoModel": "Default video model",

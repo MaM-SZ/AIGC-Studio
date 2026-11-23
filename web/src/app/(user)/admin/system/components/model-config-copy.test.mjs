@@ -58,6 +58,16 @@ test("复制视频限制时深复制嵌套对象和比例数组", () => {
     assert.equal(source.customModelConfig["image-to-video"].videoGenerationConstraints.maximumImageCount, 2);
 });
 
+test("只有请求头的模式也可复制和自动填充，空JSON不视为已填写", () => {
+    const source = config({ modelName: "headers", customModelConfig: { "text-to-video": group({ requestHeaders: '{"X-DashScope-Async":"enable"}', queryHeaders: '{"X-API-Key":"{{apiKey}}"}' }) } });
+    assert.equal(countCustomGroupFields(source.customModelConfig["text-to-video"]), 2);
+    assert.equal(isCustomGroupBlank(group({ requestHeaders: "{}", queryHeaders: " { } " })), true);
+    const copied = applyCustomConfigCopy(config({}), source, ["text-to-video"]);
+    assert.equal(copied.config.customModelConfig["text-to-video"].requestHeaders, '{"X-DashScope-Async":"enable"}');
+    const filled = applyCustomConfigAutoFill(config({}), "image-to-video", source.customModelConfig["text-to-video"]);
+    assert.equal(filled.config.customModelConfig["image-to-video"].queryHeaders, '{"X-API-Key":"{{apiKey}}"}');
+});
+
 test("复制来源排除自身与非自定义视频模型", () => {
     const target = config({});
     const sources = copyableCustomSourceModels(

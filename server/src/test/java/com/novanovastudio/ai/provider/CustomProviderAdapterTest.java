@@ -226,7 +226,7 @@ class CustomProviderAdapterTest {
         adapter.execute(context).block();
 
         ArgumentCaptor<JSONObject> body = ArgumentCaptor.forClass(JSONObject.class);
-        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture());
+        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture(), any());
         Assertions.assertEquals(conversion ? custom ? "1440x2560" : "1152x2048" : "9:16", body.getValue().getString("size"));
         Assertions.assertEquals("2K", body.getValue().getString("resolution"));
         Assertions.assertEquals("9:16", context.request().parameters().get("size"));
@@ -248,7 +248,7 @@ class CustomProviderAdapterTest {
         adapter.execute(imageContext(true, editing, template, null, Map.of())).block();
 
         ArgumentCaptor<JSONObject> body = ArgumentCaptor.forClass(JSONObject.class);
-        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture());
+        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture(), any());
         Assertions.assertEquals(fixedSize ? "1024x1024" : null, body.getValue().getString("size"));
         verifyNoInteractions(modelFactory);
     }
@@ -281,7 +281,7 @@ class CustomProviderAdapterTest {
         adapter.execute(imageContext(conversion, false, "{}", "按参数构造size", custom ? Map.of("9:16", Map.of("2K", "1440x2560")) : null)).block();
 
         ArgumentCaptor<JSONObject> body = ArgumentCaptor.forClass(JSONObject.class);
-        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture());
+        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture(), any());
         Assertions.assertEquals(expectedSize, body.getValue().getString("size"));
     }
 
@@ -306,7 +306,7 @@ class CustomProviderAdapterTest {
         adapter.execute(videoContext("seedance-2.0-fast-text-to-video", "{\"model\":\"{{model}}\",\"prompt\":\"{{prompt}}\"}")).block();
 
         ArgumentCaptor<JSONObject> body = ArgumentCaptor.forClass(JSONObject.class);
-        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture());
+        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture(), any());
         Assertions.assertEquals("seedance-2.0-fast-text-to-video", body.getValue().getString("model"));
     }
 
@@ -323,7 +323,7 @@ class CustomProviderAdapterTest {
         adapter.execute(videoContext("seedance-2.0-fast-text-to-video", "{\"model\":\"{{model}}\",\"prompt\":\"{{prompt}}\"}")).block();
 
         ArgumentCaptor<JSONObject> body = ArgumentCaptor.forClass(JSONObject.class);
-        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture());
+        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture(), any());
         Assertions.assertEquals("真实电影感，清晨窗光下的木质桌面", body.getValue().getString("prompt"));
     }
 
@@ -340,7 +340,7 @@ class CustomProviderAdapterTest {
         adapter.execute(videoContext("seedance-2.0-fast-text-to-video", "{\"duration\":5}")).block();
 
         ArgumentCaptor<JSONObject> body = ArgumentCaptor.forClass(JSONObject.class);
-        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture());
+        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture(), any());
         Assertions.assertFalse(body.getValue().containsKey("model"));
     }
 
@@ -381,7 +381,7 @@ class CustomProviderAdapterTest {
     /** 模拟视频提交接口直接返回媒体地址，避免进入轮询。 */
     private void stubVideoSubmitResult() {
         String sourceUrl = "https://provider.example/generated.mp4";
-        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), eq("https://provider.example/v1/videos/generations"), any()))
+        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), eq("https://provider.example/v1/videos/generations"), any(), any()))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"url\":\"" + sourceUrl + "\"}}")));
         when(aiHttpClient.downloadRemoteMediaToFile(eq(sourceUrl), eq("video/mp4"), any(Path.class), anyLong()))
                 .thenReturn(Mono.just(new AiHttpClient.RemoteMediaFile(12L, "video/mp4")));
@@ -418,7 +418,7 @@ class CustomProviderAdapterTest {
     /** 模拟已完成的图片接口及其媒体转存。 */
     private void stubImageResult() {
         String sourceUrl = "https://provider.example/generated.png";
-        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), any()))
+        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), any(), any()))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"url\":\"" + sourceUrl + "\"}}")));
         when(aiHttpClient.downloadRemoteBinary(sourceUrl, "image/png"))
                 .thenReturn(Mono.just(new GeneratedBinary(new byte[] {1, 2, 3}, "image/png")));
@@ -436,9 +436,11 @@ class CustomProviderAdapterTest {
     void shouldPollQueryForAsyncImageTask() {
         shortenPollingInterval();
         String sourceUrl = "https://provider.example/out.png";
-        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), eq("https://provider.example/v1/images/generations"), any()))
+        String requestHeaders = "{\"X-DashScope-Async\":\"enable\"}";
+        String queryHeaders = "{\"X-API-Key\":\"{{apiKey}}\"}";
+        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), eq("https://provider.example/v1/images/generations"), any(), eq(requestHeaders)))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"task_id\":\"img-1\"}}")));
-        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("GET"), eq("https://provider.example/v1/images/tasks/img-1"), any()))
+        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("GET"), eq("https://provider.example/v1/images/tasks/img-1"), any(), eq(queryHeaders)))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"status\":\"processing\"}}")))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"status\":\"succeeded\",\"url\":\"" + sourceUrl + "\"}}")));
         when(aiHttpClient.downloadRemoteBinary(sourceUrl, "image/png"))
@@ -447,12 +449,15 @@ class CustomProviderAdapterTest {
                 any(byte[].class), isNull(), isNull(), isNull(), eq(sourceUrl)))
                 .thenReturn(Mono.just(mediaResponse("https://storage.example/out.png", sourceUrl, "image/png")));
 
-        JSONObject result = adapter.execute(asyncImageContext(asyncImageGroup("/images/tasks/{{taskId}}", "data.url"))).block();
+        JSONObject group = (JSONObject) JSON.toJSON(asyncImageGroup("/images/tasks/{{taskId}}", "data.url"));
+        group.put("requestHeaders", requestHeaders);
+        group.put("queryHeaders", queryHeaders);
+        JSONObject result = adapter.execute(asyncImageContext(group.toJavaObject(PersistenceDtos.CustomModelGroupConfig.class))).block();
 
         Assertions.assertEquals("https://storage.example/out.png", result.getJSONObject("item").getString("url"));
         Assertions.assertEquals(sourceUrl, result.getJSONObject("item").getString("sourceUrl"));
         // 一次提交加两次查询：第一轮仍在处理，第二轮取到地址
-        verify(aiHttpClient, org.mockito.Mockito.times(3)).sendBearerJsonUrlRequest(any(), anyString(), anyString(), any());
+        verify(aiHttpClient, org.mockito.Mockito.times(3)).sendBearerJsonUrlRequest(any(), anyString(), anyString(), any(), any());
         verifyNoInteractions(modelFactory);
     }
 
@@ -466,9 +471,9 @@ class CustomProviderAdapterTest {
     void shouldStoreDataUrlReturnedByAsyncImageQuery() throws IOException {
         shortenPollingInterval();
         byte[] expected = imageBytes("jpeg");
-        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), eq("https://provider.example/v1/images/generations"), any()))
+        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), eq("https://provider.example/v1/images/generations"), any(), any()))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"task_id\":\"img-1\"}}")));
-        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("GET"), eq("https://provider.example/v1/images/tasks/img-1"), any()))
+        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("GET"), eq("https://provider.example/v1/images/tasks/img-1"), any(), any()))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"image\":\"data:image/jpeg;base64,"
                         + Base64.getEncoder().encodeToString(expected) + "\"}}")));
         when(persistenceService.storeGeneratedMediaForUser(eq(1L), eq(AiTaskTypes.IMAGE), eq("generated.jpg"), eq("image/jpeg"),
@@ -490,7 +495,7 @@ class CustomProviderAdapterTest {
     void shouldNotPollQueryForSyncImageWithQueryFields() {
         shortenPollingInterval();
         String sourceUrl = "https://provider.example/generated.png";
-        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), eq("https://provider.example/v1/images/generations"), any()))
+        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), eq("https://provider.example/v1/images/generations"), any(), any()))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"url\":\"" + sourceUrl + "\"}}")));
         when(aiHttpClient.downloadRemoteBinary(sourceUrl, "image/png"))
                 .thenReturn(Mono.just(new GeneratedBinary(new byte[] {1, 2, 3}, "image/png")));
@@ -504,7 +509,7 @@ class CustomProviderAdapterTest {
         JSONObject result = adapter.execute(asyncImageContext(group)).block();
 
         Assertions.assertEquals("https://storage.example/generated.png", result.getJSONObject("item").getString("url"));
-        verify(aiHttpClient, org.mockito.Mockito.times(1)).sendBearerJsonUrlRequest(any(), anyString(), anyString(), any());
+        verify(aiHttpClient, org.mockito.Mockito.times(1)).sendBearerJsonUrlRequest(any(), anyString(), anyString(), any(), any());
         verifyNoInteractions(modelFactory);
     }
 
@@ -577,7 +582,7 @@ class CustomProviderAdapterTest {
         if (wrapped) {
             response = new JSONObject(Map.of("code", 0, "data", response));
         }
-        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), eq("https://provider.example/v1/images/generations"), any()))
+        when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), eq("https://provider.example/v1/images/generations"), any(), any()))
                 .thenReturn(Mono.just(response));
         AiGenerationTask task = new AiGenerationTask();
         task.setId("custom-task");

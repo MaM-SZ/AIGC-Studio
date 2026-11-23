@@ -25,11 +25,13 @@ export const CUSTOM_GROUP_FIELDS: readonly CustomGroupField[] = [
     "requestPath",
     "requestModelName",
     "requestTemplate",
+    "requestHeaders",
     "aiRequestPrompt",
     "responseExample",
     "resultPath",
     "queryPath",
     "queryRequestTemplate",
+    "queryHeaders",
     "aiQueryPrompt",
     "queryResponseExample",
     "queryResultPath",
@@ -72,6 +74,7 @@ function copyableModes(config: Pick<ServerModelConfig, "modelType">): readonly C
 /** 判断文本字段和嵌套的视频限制对象是否实际填写。 */
 function hasCustomGroupFieldValue(value: unknown, field: CustomGroupField) {
     if (field === "videoGenerationConstraints") return CONSTRAINT_FIELDS.some((item) => hasConstraintValue(value as VideoGenerationConstraints | null | undefined, item));
+    if ((field === "requestHeaders" || field === "queryHeaders") && typeof value === "string" && /^\{\s*\}$/.test(value.trim())) return false;
     return typeof value === "string" ? value.trim() !== "" : value !== null && value !== undefined;
 }
 
