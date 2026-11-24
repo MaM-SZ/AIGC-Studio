@@ -190,12 +190,14 @@ public class OpenAiProviderAdapter implements AiProviderAdapter {
      * @return Mono<JSONObject> 图片结果
      */
     private Mono<JSONObject> executeImageEditTask(AiTaskExecutionContext context) {
-        return Flux.fromIterable(AiTaskParameterReader.safeReferences(context.request().references()))
+        var references = AiTaskParameterReader.safeReferences(context.request().references());
+        String imageField = references.size() > 1 ? "image[]" : "image";
+        return Flux.fromIterable(references)
                 .index()
                 .concatMap(tuple -> mediaSupport.resolveReferenceBinary(context.task().getUserId(), tuple.getT2(), "image/png")
                         .map(binary -> {
                             String fileName = AiTaskParameterReader.firstNonEmpty(tuple.getT2().name(), "reference-" + (tuple.getT1() + 1) + "." + mediaSupport.fileExtension(binary.mimeType(), "png"));
-                            return aiHttpClient.filePart("image", fileName, binary.mimeType(), binary.data());
+                            return aiHttpClient.filePart(imageField, fileName, binary.mimeType(), binary.data());
                         }))
                 .collectList()
                 .flatMap(fileParts -> {

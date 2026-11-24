@@ -37,6 +37,49 @@ import reactor.test.StepVerifier;
  */
 class ImageSizeProviderRequestTest {
 
+    /** 单图使用文件字段，多图必须使用数组字段，并按原顺序完整发送参考图。 */
+    @ParameterizedTest
+    @CsvSource({"openai,1,image", "openai,2,image[]", "openai,3,image[]", "newapi,1,image", "newapi,2,image[]", "newapi,3,image[]"})
+    void shouldSendImageReferencesWithCorrectMultipartFields(String provider, int referenceCount, String imageField) {
+        AiHttpClient client = mock(AiHttpClient.class);
+        AiMediaSupport mediaSupport = mock(AiMediaSupport.class);
+        var references = java.util.stream.IntStream.rangeClosed(1, referenceCount)
+                .mapToObj(index -> new AiTaskDtos.AiTaskMediaReference("reference-" + index, "reference-" + index + ".png",
+                        "image/png", null, "https://example.com/reference-" + index + ".png"))
+                .toList();
+        when(client.formPart(anyString(), anyString())).thenAnswer(invocation -> new MultipartPart(
+                invocation.getArgument(0), null, null, invocation.<String>getArgument(1).getBytes(StandardCharsets.UTF_8)));
+        when(client.filePart(anyString(), anyString(), anyString(), any())).thenAnswer(invocation -> new MultipartPart(
+                invocation.getArgument(0), invocation.getArgument(1), invocation.getArgument(2), invocation.getArgument(3)));
+        when(mediaSupport.resolveReferenceBinary(any(), any(), anyString())).thenAnswer(invocation -> {
+            AiTaskDtos.AiTaskMediaReference reference = invocation.getArgument(1);
+            return Mono.just(new GeneratedBinary(reference.name().getBytes(StandardCharsets.UTF_8), "image/png"));
+        });
+        when(client.sendMultipartRequest(any(), eq("/images/edits"), anyString(), anyList())).thenAnswer(invocation -> {
+            List<MultipartPart> parts = invocation.getArgument(3);
+            var images = parts.stream().filter(part -> part.fileName() != null).toList();
+            Assertions.assertEquals(referenceCount, images.size());
+            for (int index = 0; index < referenceCount; index++) {
+                Assertions.assertEquals(imageField, images.get(index).name());
+                Assertions.assertEquals(references.get(index).name(), images.get(index).fileName());
+                Assertions.assertEquals("image/png", images.get(index).contentType());
+                Assertions.assertArrayEquals(references.get(index).name().getBytes(StandardCharsets.UTF_8), images.get(index).data());
+            }
+            return Mono.just(new JSONObject(Map.of("data", List.of())));
+        });
+        AiGenerationTask task = new AiGenerationTask();
+        task.setUserId(1L);
+        task.setTaskType(AiTaskTypes.IMAGE);
+        var channel = new AiTaskDtos.AiChannelConfig("channel", "测试渠道", "https://example.com/v1", "key", provider, List.of("gpt-image-2"));
+        var request = new AiTaskDtos.CreateAiTaskRequest(AiTaskTypes.IMAGE, "组合这些参考图", "gpt-image-2", Map.of(), references, List.of(), "imagePage");
+        var context = new AiTaskExecutionContext(task, channel, "gpt-image-2", false, "", request,
+                () -> Mono.just(false), progress -> Mono.empty(), delta -> Mono.empty());
+
+        StepVerifier.create(adapter(provider, client, mediaSupport).execute(context))
+                .assertNext(result -> Assertions.assertNotNull(result.getJSONArray("items")))
+                .verifyComplete();
+    }
+
     /**
      * 图片接口不应固定附加供应商不支持的response_format参数。
      *
