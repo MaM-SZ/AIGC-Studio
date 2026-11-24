@@ -3,6 +3,7 @@ package com.novanovastudio.ai;
 import com.novanovastudio.common.SystemMessage;
 
 import com.alibaba.fastjson2.JSONObject;
+import com.drew.imaging.FileTypeDetector;
 import com.novanovastudio.common.BusinessException;
 import com.novanovastudio.common.ErrorCode;
 import com.novanovastudio.config.NovanovaProperties;
@@ -12,7 +13,6 @@ import com.novanovastudio.service.PersistenceService;
 import com.novanovastudio.storage.MediaAccessService;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
@@ -82,9 +82,13 @@ public class AiMediaSupport {
         if (StringUtils.hasText(base64)) {
             return Mono.fromCallable(() -> {
                 byte[] data = Base64.getDecoder().decode(base64);
-                // 识别图片文件头，避免JPEG内容被登记为PNG。
-                String mimeType = URLConnection.guessContentTypeFromStream(new ByteArrayInputStream(data));
-                return new GeneratedBinary(data, AiTaskParameterReader.firstNonEmpty(mimeType, "image/png"));
+                // 按实际文件类型识别，避免JDK把RIFF容器中的WebP误判成WAV。
+                String mimeType = FileTypeDetector.detectFileType(new ByteArrayInputStream(data)).getMimeType();
+                if (mimeType == null || !mimeType.startsWith("image/")) {
+                    throw new BusinessException(ErrorCode.THIRD_PARTY_CALL_ERROR,
+                            SystemMessage.of("business.imageAPIReturnedNonImageContent"));
+                }
+                return new GeneratedBinary(data, mimeType);
             });
         }
         String url = AiTaskParameterReader.firstNonEmpty(item.getString("url"));

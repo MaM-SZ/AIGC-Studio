@@ -24,6 +24,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import reactor.core.publisher.Mono;
 
 /**
@@ -170,12 +172,23 @@ class AiMediaSupportTest {
      *
      * @return void 无返回值
      */
-    @Test
-    void shouldStoreBase64ImageResultWithoutSourceUrl() {
+    @ParameterizedTest
+    @CsvSource({
+            "png, image/png, iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mOoCNAAAAI0APHbUWEAAAAAAElFTkSuQmCC",
+            "jpg, image/jpeg, /9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAABf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AJYAOUf/2Q==",
+            "webp, image/webp, UklGRjQAAABXRUJQVlA4ICgAAACQAQCdASoBAAEAAUAmJZgCdLoAA5gA/vCbQ/4DdfFtMv0fmXJznAAA",
+            "webp, image/webp, UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAdQqOIVpf+BiOh/AAA="
+    })
+    void shouldStoreBase64ImageResultWithoutSourceUrl(String extension, String mimeType, String base64) {
+        byte[] expected = Base64.getDecoder().decode(base64);
         JSONObject item = new JSONObject();
-        item.put("b64_json", Base64.getEncoder().encodeToString(new byte[] {1, 2, 3}));
-        when(persistenceService.storeGeneratedMediaForUser(eq(1L), eq(AiTaskTypes.IMAGE), eq("generated.png"), eq("image/png"),
-                any(byte[].class), isNull(), isNull(), eq(0)))
+        item.put("b64_json", base64);
+        GeneratedBinary binary = service.imageBinary(item).block();
+        Assertions.assertNotNull(binary);
+        Assertions.assertEquals(mimeType, binary.mimeType());
+        Assertions.assertArrayEquals(expected, binary.data());
+        when(persistenceService.storeGeneratedMediaForUser(eq(1L), eq(AiTaskTypes.IMAGE), eq("generated." + extension), eq(mimeType),
+                org.mockito.ArgumentMatchers.argThat((byte[] data) -> Arrays.equals(expected, data)), isNull(), isNull(), eq(0)))
                 .thenReturn(Mono.just(mediaResponse("https://cos.example/generated.png", null)));
 
         PersistenceDtos.UploadedMediaResponse response = service.storeGeneratedImageItem(1L, item, null, null, 0).block();
@@ -185,6 +198,29 @@ class AiMediaSupportTest {
         Assertions.assertNull(response.sourceUrl());
         verify(aiHttpClient, never()).downloadRemoteBinary(anyString(), anyString());
         verify(persistenceService, never()).registerRemoteMediaForUser(any(), any(PersistenceDtos.RegisterRemoteMediaRequest.class));
+    }
+
+    /** WAV、PDF和普通文件不能作为Base64图片结果入库。 */
+    @ParameterizedTest
+    @CsvSource({
+            "WAV, UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "PDF, JVBERi0xLjcK",
+            "text, aGVsbG8gd29ybGQ=",
+            "unknown, AQID"
+    })
+    void shouldRejectNonImageBase64Result(String format, String base64) {
+        JSONObject item = new JSONObject();
+        item.put("b64_json", base64);
+        when(persistenceService.storeGeneratedMediaForUser(anyLong(), anyString(), anyString(), anyString(),
+                any(byte[].class), isNull(), isNull(), eq(0)))
+                .thenReturn(Mono.just(mediaResponse("https://cos.example/invalid", null)));
+
+        BusinessException exception = Assertions.assertThrows(BusinessException.class,
+                () -> service.storeGeneratedImageItem(1L, item, null, null, 0).block(), format);
+
+        Assertions.assertEquals(ErrorCode.THIRD_PARTY_CALL_ERROR, exception.getCode());
+        verify(persistenceService, never()).storeGeneratedMediaForUser(anyLong(), anyString(), anyString(), anyString(),
+                any(byte[].class), any(), any(), any());
     }
 
     /**
