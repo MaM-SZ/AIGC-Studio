@@ -369,6 +369,21 @@ class CustomProviderAdapterTest {
         verify(modelFactory).defaultTextModel();
     }
 
+    /** 无引号的时长占位符应输出整数，显式加引号时仍允许输出字符串。 */
+    @ParameterizedTest
+    @CsvSource({"false", "true"})
+    void shouldRenderDurationWithConfiguredJsonType(boolean quoted) {
+        stubVideoSubmitResult();
+        String duration = quoted ? "\"{{seconds}}\"" : "{{seconds}}";
+
+        adapter.execute(videoContext("video-model", "{\"duration\":" + duration + "}", null)).block();
+
+        ArgumentCaptor<JSONObject> body = ArgumentCaptor.forClass(JSONObject.class);
+        verify(aiHttpClient).sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), body.capture(), any());
+        Assertions.assertEquals(quoted ? "5" : 5, body.getValue().get("duration"));
+        verifyNoInteractions(modelFactory);
+    }
+
     /** 模拟AI构造请求体返回的JSON。 */
     private void stubVideoAgentResult(String body) {
         Model model = mock(Model.class);
@@ -398,13 +413,19 @@ class CustomProviderAdapterTest {
      * @return AiTaskExecutionContext 视频任务上下文
      */
     private AiTaskExecutionContext videoContext(String requestModelName, String template) {
+        return videoContext(requestModelName, template,
+                "- model固定不变=" + requestModelName + "\n{\n  \"model\": \"{{model}}\",\n  \"prompt\": \"{{prompt}}\"\n}");
+    }
+
+    /** 构造使用模板或AI提示词的视频任务上下文。 */
+    private AiTaskExecutionContext videoContext(String requestModelName, String template, String aiRequestPrompt) {
         AiGenerationTask task = new AiGenerationTask();
         task.setId("custom-video-task");
         task.setUserId(1L);
         task.setTaskType(AiTaskTypes.VIDEO);
         PersistenceDtos.CustomModelGroupConfig group = new PersistenceDtos.CustomModelGroupConfig(
                 "/videos/generations", "POST", requestModelName, template,
-                "- model固定不变=" + requestModelName + "\n{\n  \"model\": \"{{model}}\",\n  \"prompt\": \"{{prompt}}\"\n}",
+                aiRequestPrompt,
                 "{}", "data.url", null, null, null, null, null, null);
         return new AiTaskExecutionContext(task,
                 new AiTaskDtos.AiChannelConfig("custom-channel", "自定义渠道", "https://provider.example/v1", "key", "custom", List.of()),

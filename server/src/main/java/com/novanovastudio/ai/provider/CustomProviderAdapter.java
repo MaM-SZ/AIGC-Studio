@@ -646,7 +646,7 @@ public class CustomProviderAdapter implements AiProviderAdapter {
         }
         String seconds = AiTaskParameterReader.stringParameter(parameters, "seconds", "");
         if (StringUtils.hasText(seconds)) {
-            placeholders.put("seconds", seconds);
+            placeholders.put("seconds", Integer.parseInt(seconds));
         }
         placeholders.put("count", AiTaskParameterReader.intParameter(parameters, "count", 1, 1, 10));
         if (StringUtils.hasText(taskId)) {
