@@ -34,6 +34,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +56,9 @@ import reactor.core.publisher.Flux;
  * @date 2026-10-20 16:00
  */
 class CustomProviderAdapterTest {
+
+    /** 异步任务实际发布的进度。 */
+    private final List<Integer> reportedProgress = new ArrayList<>();
 
     /** 第三方接口客户端。 */
     private AiHttpClient aiHttpClient;
@@ -452,20 +456,26 @@ class CustomProviderAdapterTest {
     }
 
     /**
-     * 开启异步查询的图片能力应提交拿任务ID后轮询查询接口取图。
+     * 异步图片轮询应兼容带百分号的进度，并继续等待最终结果。
      *
-     * @return void 无返回值
+     * @param nested 进度是否位于响应的 data 对象中
+     * @param progressJson 渠道返回的进度 JSON 值
+     * @param expectedProgress 第一次查询后应上报的进度
      */
-    @Test
-    void shouldPollQueryForAsyncImageTask() {
+    @ParameterizedTest
+    @CsvSource({"true, '\"50%\"', 50", "false, '\"50%\"', 50", "false, 50, 50", "true, '\"50\"', 50",
+            "false, 50.5, 50", "false, 120, 95"})
+    void shouldPollQueryForAsyncImageTask(boolean nested, String progressJson, int expectedProgress) {
         shortenPollingInterval();
         String sourceUrl = "https://provider.example/out.png";
         String requestHeaders = "{\"X-DashScope-Async\":\"enable\"}";
         String queryHeaders = "{\"X-API-Key\":\"{{apiKey}}\"}";
         when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), eq("https://provider.example/v1/images/generations"), any(), eq(requestHeaders)))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"task_id\":\"img-1\"}}")));
+        JSONObject pending = JSON.parseObject("{\"data\":{\"status\":\"processing\"}}");
+        (nested ? pending.getJSONObject("data") : pending).put("progress", JSON.parse(progressJson));
         when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("GET"), eq("https://provider.example/v1/images/tasks/img-1"), any(), eq(queryHeaders)))
-                .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"status\":\"processing\"}}")))
+                .thenReturn(Mono.just(pending))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"status\":\"succeeded\",\"url\":\"" + sourceUrl + "\"}}")));
         when(aiHttpClient.downloadRemoteBinary(eq(sourceUrl), eq("image/png"), any(Duration.class)))
                 .thenReturn(Mono.just(new GeneratedBinary(new byte[] {1, 2, 3}, "image/png")));
@@ -480,6 +490,7 @@ class CustomProviderAdapterTest {
 
         Assertions.assertEquals("https://storage.example/out.png", result.getJSONObject("item").getString("url"));
         Assertions.assertEquals(sourceUrl, result.getJSONObject("item").getString("sourceUrl"));
+        Assertions.assertEquals(List.of(20, expectedProgress, Math.max(expectedProgress, 21)), reportedProgress);
         // 一次提交加两次查询：第一轮仍在处理，第二轮取到地址
         verify(aiHttpClient, org.mockito.Mockito.times(3)).sendBearerJsonUrlRequest(any(), anyString(), anyString(), any(), any());
         verifyNoInteractions(modelFactory);
@@ -553,7 +564,7 @@ class CustomProviderAdapterTest {
                 new AiTaskDtos.AiChannelConfig("custom-channel", "自定义渠道", "https://provider.example/v1", "key", "custom", List.of()),
                 "image-model", false, "", new JSONObject(),
                 new AiTaskDtos.CreateAiTaskRequest(AiTaskTypes.IMAGE, "生成小猫", "image-model", Map.of(), List.of(), List.of(), "imagePage"),
-                () -> Mono.just(false), progress -> Mono.empty(), delta -> Mono.empty(), true,
+                () -> Mono.just(false), progress -> Mono.fromRunnable(() -> reportedProgress.add(progress)), delta -> Mono.empty(), true,
                 Map.of("text-to-image", group), false, null);
     }
 

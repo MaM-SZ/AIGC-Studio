@@ -320,13 +320,23 @@ public class CustomProviderAdapter implements AiProviderAdapter {
      * @return int 进度，1 到 95
      */
     private static int providerProgress(JSONObject response, int fallback) {
-        Integer value = response == null ? null : response.getInteger("progress");
+        Integer value = readProgress(response);
         if (value == null && response != null) {
-            JSONObject data = response.getJSONObject("data");
-            value = data == null ? null : data.getInteger("progress");
+            value = readProgress(response.getJSONObject("data"));
         }
         int progress = value == null ? fallback : value;
         return Math.max(1, Math.min(95, progress));
+    }
+
+    /** 兼容渠道返回的带百分号的整数进度。 */
+    private static Integer readProgress(JSONObject response) {
+        if (response == null) {
+            return null;
+        }
+        if (response.get("progress") instanceof String text && text.endsWith("%")) {
+            return Integer.valueOf(text.substring(0, text.length() - 1).trim());
+        }
+        return response.getInteger("progress");
     }
 
     /**
