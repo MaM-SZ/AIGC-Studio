@@ -1020,7 +1020,7 @@ export default function VideoPage() {
                             storageKey: image.storageKey,
                             objectStorage: image.objectStorage,
                         };
-                        uploadedImages.push(uploadedReference);
+                        uploadedImages[index] = uploadedReference;
                         setReferences((current) => current.map((reference) => (reference.id === placeholder.id ? uploadedReference : reference)));
                     } catch (error) {
                         setReferences((current) => current.filter((reference) => reference.id !== placeholder.id));
@@ -1057,7 +1057,7 @@ export default function VideoPage() {
                     }
                 }),
             ]);
-            return { images: uploadedImages, videos: uploadedVideos, mode };
+            return { images: uploadedImages.filter(Boolean), videos: uploadedVideos, mode };
         } catch (error) {
             message.error(error instanceof Error ? error.message : translate("video.failedToUploadReference_893885"));
             return { images: [], videos: [], mode };
@@ -1138,8 +1138,8 @@ export default function VideoPage() {
         const quality = config.vquality || "720p";
         const watermark = config.videoWatermark ?? true;
         pendingVideoSizeRef.current = size;
-        const currentAttachments = [...imageReferenceAttachments(references), ...videoReferenceAttachments(videoReferences)];
-        const previousAttachments = [...imageReferenceAttachments(latestRound?.references || []), ...videoReferenceAttachments(latestRound?.videoReferences || [])];
+        const currentAttachments = [...imageReferenceAttachments(references, config.videoGenerationMode), ...videoReferenceAttachments(videoReferences)];
+        const previousAttachments = [...imageReferenceAttachments(latestRound?.references || [], config.videoGenerationMode), ...videoReferenceAttachments(latestRound?.videoReferences || [])];
         const allRefs = selectGenerationAttachments(text, currentAttachments, previousAttachments);
         const selectedVideoQuote = quoteVideoGeneration({
             config: effectiveConfig,
@@ -1295,7 +1295,7 @@ export default function VideoPage() {
             return next;
         });
         // 携带当前参考素材附件：技能引导中用户上传的图片/视频需随确认消息送达，作为最终生成参考
-        const currentAttachments = [...imageReferenceAttachments(references), ...videoReferenceAttachments(videoReferences)];
+        const currentAttachments = [...imageReferenceAttachments(references, config.videoGenerationMode), ...videoReferenceAttachments(videoReferences)];
         // 图片确认轮确认生成视频时，携带用户确认的视频参数（比例/清晰度/时长）覆盖页面默认值
         const settingsOverride =
             workflowImageConfirmNext && text === "用这些图片生成视频"
@@ -1361,7 +1361,7 @@ export default function VideoPage() {
         if (!files?.length) return;
         if (!ensureModelConfiguration("video", model) || !ensureModelConfiguration("text")) return;
         const { images, videos, mode } = await addReferences(files);
-        const attachments = [...imageReferenceAttachments(images), ...videoReferenceAttachments(videos)];
+        const attachments = [...imageReferenceAttachments(images, mode), ...videoReferenceAttachments(videos)];
         if (!attachments.length || isStreaming || isQueued) return;
         const videoModel = effectiveConfig.videoModel || effectiveConfig.model || model;
         const size = config.size || "16:9";
@@ -1411,7 +1411,7 @@ export default function VideoPage() {
         if (!ensureModelConfiguration("video", videoModel) || !ensureModelConfiguration("text")) return;
         const size = round.config.size;
         const resolution = round.config.vquality;
-        const attachments = [...imageReferenceAttachments(round.references), ...videoReferenceAttachments(round.videoReferences)];
+        const attachments = [...imageReferenceAttachments(round.references, round.config.videoGenerationMode), ...videoReferenceAttachments(round.videoReferences)];
         if (size) pendingVideoSizeRef.current = size;
         setChatMessages((prev) => {
             const next = [
@@ -1682,9 +1682,11 @@ export default function VideoPage() {
     const referenceChips: CreationReferenceChip[] = [
         ...references.map((reference, index) => {
             const uploading = uploadingReferenceIds.includes(reference.id);
+            const label = config.videoGenerationMode === "first-last-frame-to-video" && index < 2
+                ? translate(index === 0 ? "video.firstFrame" : "video.lastFrame") : seedanceReferenceLabel("image", index);
             return {
                 id: reference.id,
-                label: uploading ? translate("video.uploading", { value0: seedanceReferenceLabel("image", index) }) : seedanceReferenceLabel("image", index),
+                label: uploading ? translate("video.uploading", { value0: label }) : label,
                 preview: (
                     <div className="relative size-11">
                         <ReferenceImagePreview reference={reference} size={44} mask={uploading ? undefined : translate("video.preview")} />

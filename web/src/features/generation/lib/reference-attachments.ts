@@ -1,6 +1,7 @@
 
 import { translateMessage as translate } from "@/features/locale/translate";
 import type { AgentAttachment } from "@/features/canvas/api/agent";
+import type { VideoGenerationMode } from "@/features/settings/stores/use-config-store";
 
 type ReferenceMedia = {
     name?: string;
@@ -22,8 +23,10 @@ export function referenceMediaType(reference: ReferenceMedia, fallbackType: stri
     return reference.type?.trim() || reference.mimeType?.trim() || fallbackType;
 }
 
-export function imageReferenceAttachments(references: readonly ReferenceMedia[]): AgentAttachment[] {
-    return references.flatMap((reference) => toAgentAttachment(reference, "image/*", translate("generation.referenceImage_e8a1ec")));
+export function imageReferenceAttachments(references: readonly ReferenceMedia[], videoGenerationMode?: VideoGenerationMode): AgentAttachment[] {
+    const attachments = references.flatMap((reference) => toAgentAttachment(reference, "image/*", translate("generation.referenceImage_e8a1ec")));
+    if (videoGenerationMode !== "first-last-frame-to-video") return attachments;
+    return attachments.map((attachment, index) => ({ ...attachment, role: index === 0 ? "first_frame" : "last_frame" }));
 }
 
 export function videoReferenceAttachments(references: readonly ReferenceMedia[]): AgentAttachment[] {

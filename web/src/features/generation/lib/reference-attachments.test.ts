@@ -40,3 +40,26 @@ test("历史字段可恢复为前端参考图字段", () => {
     assert.equal(referenceMediaType(reference, "image/*"), "image/webp");
     assert.equal(referenceMediaUrl(reference), "https://storage.example.com/reference.webp");
 });
+
+test("首尾帧模式按有效图片顺序标记角色并保留媒体信息", () => {
+    const images = [
+        { name: "first.png", type: "image/png", storageKey: "image:first", objectStorage: { url: "https://storage.example.com/first.png" } },
+        { name: "last.png", mimeType: "image/png", url: "https://storage.example.com/last.png" },
+    ];
+    assert.deepEqual(imageReferenceAttachments(images, "first-last-frame-to-video"), [
+        { name: "first.png", type: "image/png", url: "https://storage.example.com/first.png", storageKey: "image:first", role: "first_frame" },
+        { name: "last.png", type: "image/png", url: "https://storage.example.com/last.png", role: "last_frame" },
+    ]);
+    assert.deepEqual(imageReferenceAttachments([{ name: "empty" }, ...images], "first-last-frame-to-video"),
+        imageReferenceAttachments(images, "first-last-frame-to-video"));
+    assert.equal(images.some((image) => "role" in image), false);
+});
+
+test("其他视频模式不添加首尾帧角色", () => {
+    const images = [{ name: "reference.png", type: "image/png", url: "https://storage.example.com/reference.png" }];
+    const expected = [{ name: "reference.png", type: "image/png", url: "https://storage.example.com/reference.png" }];
+    for (const mode of [undefined, "text-to-video", "image-to-video", "reference-to-video"] as const) {
+        assert.deepEqual(imageReferenceAttachments(images, mode), expected);
+    }
+    assert.deepEqual(imageReferenceAttachments([], "first-last-frame-to-video"), []);
+});
