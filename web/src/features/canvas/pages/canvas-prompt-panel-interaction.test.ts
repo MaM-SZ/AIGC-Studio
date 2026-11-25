@@ -157,7 +157,7 @@ test("画布视频设置按比例清晰度时长和限定数量排列", () => {
     assert.ok(videoSettingsPanelSource.includes("onChange={setDurationDraft}"), "拖动视频时长仍会直接更新画布节点");
     assert.ok(videoSettingsPanelSource.includes("onChangeComplete={commitDuration}"), "视频时长拖动结束后未提交节点配置");
     assert.ok(videoSettingsPanelSource.includes("const VIDEO_COUNT_PRESETS = [1, 2, 4]"), "视频生成数量未严格限制为1、2、4");
-    assert.ok(!videoSettingsPanelSource.includes("生成音频"), "视频节点设置仍包含生成音频配置");
+    assert.ok(!videoSettingsPopoverSource.includes("onAudioChange="), "视频节点设置仍包含生成音频配置");
     assert.ok(videoSettingsPopoverSource.includes("width={420}"), "视频设置浮层宽度不足以容纳五列比例布局");
     assert.ok(canvasPageSource.includes("Array.from({ length: count }"), "视频生成数量未用于创建对应数量的节点任务");
 });

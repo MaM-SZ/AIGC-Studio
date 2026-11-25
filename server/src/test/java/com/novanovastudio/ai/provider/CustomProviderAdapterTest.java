@@ -33,6 +33,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -108,6 +109,7 @@ class CustomProviderAdapterTest {
         verify(persistenceService, never()).registerRemoteMediaForUser(any(), any());
         verify(aiHttpClient, never()).readRemoteMediaHeaders(anyString());
         verify(aiHttpClient, never()).downloadRemoteBinary(anyString(), anyString());
+        verify(aiHttpClient, never()).downloadRemoteBinary(anyString(), anyString(), any(Duration.class));
         verifyNoInteractions(modelFactory);
     }
 
@@ -129,6 +131,7 @@ class CustomProviderAdapterTest {
         Assertions.assertEquals("image/jpeg", result.getJSONObject("item").getString("mimeType"));
         verify(persistenceService, never()).registerRemoteMediaForUser(any(), any());
         verify(aiHttpClient, never()).downloadRemoteBinary(anyString(), anyString());
+        verify(aiHttpClient, never()).downloadRemoteBinary(anyString(), anyString(), any(Duration.class));
         verifyNoInteractions(modelFactory);
     }
 
@@ -140,7 +143,7 @@ class CustomProviderAdapterTest {
     @Test
     void shouldStoreLinkedImageAndKeepSourceUrl() {
         String sourceUrl = "https://provider.example/generated.jpg";
-        when(aiHttpClient.downloadRemoteBinary(sourceUrl, "image/png"))
+        when(aiHttpClient.downloadRemoteBinary(eq(sourceUrl), eq("image/png"), any(Duration.class)))
                 .thenReturn(Mono.just(new GeneratedBinary(new byte[] {1, 2, 3}, "image/jpeg")));
         when(persistenceService.storeGeneratedMediaForUser(eq(1L), eq(AiTaskTypes.IMAGE), eq("generated.jpg"), eq("image/jpeg"),
                 any(byte[].class), isNull(), isNull(), isNull(), eq(sourceUrl)))
@@ -441,7 +444,7 @@ class CustomProviderAdapterTest {
         String sourceUrl = "https://provider.example/generated.png";
         when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), anyString(), any(), any()))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"url\":\"" + sourceUrl + "\"}}")));
-        when(aiHttpClient.downloadRemoteBinary(sourceUrl, "image/png"))
+        when(aiHttpClient.downloadRemoteBinary(eq(sourceUrl), eq("image/png"), any(Duration.class)))
                 .thenReturn(Mono.just(new GeneratedBinary(new byte[] {1, 2, 3}, "image/png")));
         when(persistenceService.storeGeneratedMediaForUser(eq(1L), eq(AiTaskTypes.IMAGE), anyString(), anyString(),
                 any(byte[].class), isNull(), isNull(), isNull(), eq(sourceUrl)))
@@ -464,7 +467,7 @@ class CustomProviderAdapterTest {
         when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("GET"), eq("https://provider.example/v1/images/tasks/img-1"), any(), eq(queryHeaders)))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"status\":\"processing\"}}")))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"status\":\"succeeded\",\"url\":\"" + sourceUrl + "\"}}")));
-        when(aiHttpClient.downloadRemoteBinary(sourceUrl, "image/png"))
+        when(aiHttpClient.downloadRemoteBinary(eq(sourceUrl), eq("image/png"), any(Duration.class)))
                 .thenReturn(Mono.just(new GeneratedBinary(new byte[] {1, 2, 3}, "image/png")));
         when(persistenceService.storeGeneratedMediaForUser(eq(1L), eq(AiTaskTypes.IMAGE), anyString(), anyString(),
                 any(byte[].class), isNull(), isNull(), isNull(), eq(sourceUrl)))
@@ -518,7 +521,7 @@ class CustomProviderAdapterTest {
         String sourceUrl = "https://provider.example/generated.png";
         when(aiHttpClient.sendBearerJsonUrlRequest(any(), eq("POST"), eq("https://provider.example/v1/images/generations"), any(), any()))
                 .thenReturn(Mono.just(JSON.parseObject("{\"data\":{\"url\":\"" + sourceUrl + "\"}}")));
-        when(aiHttpClient.downloadRemoteBinary(sourceUrl, "image/png"))
+        when(aiHttpClient.downloadRemoteBinary(eq(sourceUrl), eq("image/png"), any(Duration.class)))
                 .thenReturn(Mono.just(new GeneratedBinary(new byte[] {1, 2, 3}, "image/png")));
         when(persistenceService.storeGeneratedMediaForUser(eq(1L), eq(AiTaskTypes.IMAGE), anyString(), anyString(),
                 any(byte[].class), isNull(), isNull(), isNull(), eq(sourceUrl)))

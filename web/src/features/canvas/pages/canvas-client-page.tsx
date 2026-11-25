@@ -33,6 +33,7 @@ import { quoteVideoGeneration } from "@/features/generation/lib/video-billing";
 import { defaultConfig, normalizeModelOptionValue, type AiConfig, useConfigStore, useEffectiveConfig } from "@/features/settings/stores/use-config-store";
 import { getImageBlob, resolveImageUrl, reuseOrUploadImage, uploadImage, type UploadedImage } from "@/features/storage/services/image-storage";
 import { stopCanvasAudio } from "../services/canvas-audio-playback";
+import { captureCanvasVideoFrame } from "../services/canvas-video-frame";
 import { mergeAudioReferences } from "../utils/audio-references";
 import { downloadMedia } from "@/features/storage/services/media-download";
 import { createMediaDownloadFileName } from "@/features/storage/services/media-download-name";
@@ -118,6 +119,7 @@ import type { InsertAssetPayload } from "@/features/assets/components/asset-pick
 import { useAgentSSE } from "../hooks/use-agent-sse";
 import { agentActiveRequest, agentReplayPendingTools } from "../api/agent";
 import { useAgentThinking } from "@/features/chat/use-agent-thinking";
+import { buildActivityDialogueLines, createToolExecutionActivity } from "@/features/generation/components/agent-activity";
 import { useAssistantMessageStream } from "../hooks/use-assistant-message-stream";
 import { useCanvasKeyboardShortcuts } from "../hooks/canvas-keyboard-shortcuts";
 import { useCanvasViewportGeometry } from "../hooks/canvas-viewport-geometry";
@@ -3254,6 +3256,40 @@ function CanvasWorkspacePage() {
         [addAsset, message],
     );
 
+    const captureVideoFrame = useCallback(async (node: CanvasVideoNode, video: HTMLVideoElement) => {
+        const signal = mediaUploadScopeRef.current?.controller.signal;
+        if (!signal || signal.aborted) return;
+        const { source, storageKey } = node.content;
+        const findCurrentVideo = () => {
+            const current = nodesRef.current.find((item) => item.id === node.id);
+            return current && isVideoNode(current) && current.content.source === source && current.content.storageKey === storageKey ? current : null;
+        };
+        try {
+            const videoUrl = video.currentSrc;
+            const frame = await captureCanvasVideoFrame(video, async () => {
+                const stored = storageKey ? await getMediaBlob(storageKey) : null;
+                if (stored) return stored;
+                if (!videoUrl) return null;
+                const response = await fetch(videoUrl, { signal });
+                return response.ok ? response.blob() : null;
+            }, signal);
+            if (signal.aborted || !findCurrentVideo()) return;
+            const image = await uploadImage(frame, { compress: false });
+            const current = findCurrentVideo();
+            if (signal.aborted || !current) return;
+            const size = fitNodeSize(image.width, image.height);
+            const anchor = { x: current.frame.position.x + current.frame.width + CONNECTED_NODE_GAP, y: current.frame.position.y };
+            const position = findNonOverlappingCanvasNodePosition(nodesRef.current, anchor, size.width, size.height);
+            const child = updateCanvasNodeFrame({ ...createCanvasNode("image", position, imageAttributes(image)), title: translate("canvas.capturedVideoFrame") }, { position, ...size });
+            setNodes((previous) => [...previous, child]);
+            setConnections((previous) => [...previous, createRightToLeftConnection(current.id, child.id)]);
+            setSelectedNodeIds(new Set([child.id]));
+            setSelectedConnectionId(null);
+        } catch {
+            if (!signal.aborted && findCurrentVideo()) message.error(translate("canvas.captureVideoFrameFailed"));
+        }
+    }, [message, translate]);
+
     const cropImageNode = useCallback(
         async (node: CanvasDomainNode, crop: CanvasImageCropRect) => {
             if (!isImageNode(node) || !node.content.source) return;
@@ -3499,6 +3535,51 @@ function CanvasWorkspacePage() {
         },
     });
 
+    const appendCanvasDialogueLine = useCallback(
+        (sessionId: string, line: string, fallbackMessageId?: string, status?: string) => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
+            const targetId = activeAgentAssistantMessageIdRef.current || fallbackMessageId || nanoid();
+            activeAgentAssistantMessageIdRef.current = targetId;
+            updateAssistantSession(sessionId, (session) => {
+                const existingIndex = session.messages.findIndex((item) => item.id === targetId);
+                if (existingIndex < 0) {
+                    return {
+                        ...session,
+                        messages: [
+                            ...session.messages,
+                            {
+                                id: targetId,
+                                role: "assistant" as const,
+                                text: trimmed,
+                                ...(status ? { executionStatus: status } : {}),
+                            },
+                        ],
+                        updatedAt: new Date().toISOString(),
+                    };
+                }
+                const existing = session.messages[existingIndex];
+                if (existing.executionStatus === "failed" && status && status !== "failed") {
+                    return session;
+                }
+                const currentText = existing.text.trim();
+                const head = trimmed.slice(0, Math.min(14, trimmed.length));
+                const duplicated = currentText.includes(trimmed) || (head.length >= 6 && currentText.includes(head));
+                const nextText = duplicated ? existing.text : currentText ? `${currentText}\n${trimmed}` : trimmed;
+                return {
+                    ...session,
+                    messages: session.messages.map((item, idx) =>
+                        idx === existingIndex
+                            ? { ...item, text: nextText, ...(status ? { executionStatus: status } : {}) }
+                            : item,
+                    ),
+                    updatedAt: new Date().toISOString(),
+                };
+            });
+        },
+        [updateAssistantSession],
+    );
+
     const {
         sendMessage: sendAgentMessage,
         cancelMessage: cancelAgentMessage,
@@ -3510,12 +3591,22 @@ function CanvasWorkspacePage() {
     } = useAgentSSE({
         snapshot: agentSnapshot,
         onApplyOps: applyAgentOps,
-        onToolExecute: () => {
+        onToolExecute: (call) => {
+            // 工具开始执行时保留当前流式规划对话，并追加与图片/视频页一致的工具调用对话行。
+            resetTextStream(true);
             const sessionId = activeAgentSessionIdRef.current;
-            const messageId = activeAgentAssistantMessageIdRef.current;
-            resetTextStream(false);
-            if (sessionId && messageId) removeAssistantMessage(sessionId, messageId);
-            activeAgentAssistantMessageIdRef.current = null;
+            if (!sessionId) return;
+            const activity = createToolExecutionActivity({
+                callId: call.callId,
+                name: call.name,
+                arguments: call.arguments,
+                status: "executing",
+                progress: 0,
+            });
+            const lines = buildActivityDialogueLines([activity]);
+            if (lines[0]) {
+                appendCanvasDialogueLine(sessionId, lines[0]);
+            }
         },
         onTextDelta: (_messageId, delta) => {
             const sessionId = activeAgentSessionIdRef.current;
@@ -3534,6 +3625,34 @@ function CanvasWorkspacePage() {
             activeAgentAssistantMessageIdRef.current = displayMessageId;
             if (action?.type === "choice" && action.options?.length) {
                 assistantActionsRef.current.set(displayMessageId, { type: action.type, options: action.options });
+            }
+            const trimmedText = (text || "").trim();
+            const isGenericPlanSummary = /^(?:生成计划已完成|画布计划已执行)[：:]|^generation\s+plan\s+completed/i.test(trimmedText);
+            if (isGenericPlanSummary) {
+                // 保留已展示的多行规划与执行对话，并将“正在… ”收敛为“已…。”，避免被机械汇总覆写。
+                resetTextStream(true);
+                updateAssistantSession(sessionId, (session) => ({
+                    ...session,
+                    messages: session.messages.map((item) => {
+                        if (item.id !== displayMessageId) return item;
+                        const settledText = item.text
+                            .split("\n")
+                            .map((line) => (/^正在.+…$/.test(line) ? `已${line.slice(2, -1)}。` : line))
+                            .join("\n");
+                        return {
+                            ...item,
+                            text: settledText,
+                            ...(action?.type === "choice" && action.options?.length
+                                ? { action: { type: action.type, options: action.options } }
+                                : {}),
+                        };
+                    }),
+                    updatedAt: new Date().toISOString(),
+                }));
+                activeAgentAssistantMessageIdRef.current = null;
+                setAgentRunning(false);
+                setAgentQueued(false);
+                return;
             }
             completeTextMessage(sessionId, displayMessageId, text);
         },
@@ -3555,36 +3674,32 @@ function CanvasWorkspacePage() {
         onPlanCreated: (planId, summary, taskCount) => {
             const sessionId = activeAgentSessionIdRef.current;
             if (!sessionId) return;
-            appendAssistantMessage(sessionId, {
-                id: `plan-${planId}`,
-                role: "system",
-                title: translate("canvas.creativePlan"),
-                text: summary,
-                meta: translate("canvas.tasks", { value0: taskCount }),
-            });
+            const cleanSummary = summary.trim().replace(/([。！？])，\s*共/g, "$1 共");
+            const planLine = cleanSummary
+                ? /[。！？]$/.test(cleanSummary)
+                    ? `${cleanSummary} 共 ${taskCount} 个任务`
+                    : `${cleanSummary}，共 ${taskCount} 个任务`
+                : translate("canvas.tasks", { value0: taskCount });
+            appendCanvasDialogueLine(sessionId, planLine, `plan-${planId}`);
         },
         onPlanTaskStatus: (planId, _taskId, status, statusMessage) => {
             const sessionId = activeAgentSessionIdRef.current;
             if (!sessionId) return;
-            updateAssistantSession(sessionId, (session) => ({
-                ...session,
-                messages: session.messages.map((item) => {
-                    if (item.id !== `plan-${planId}`) return item;
-                    // 已标记失败的计划不被后到的诊断/调整/重试等中间状态覆盖，避免失败显示回退为执行中。
-                    if (item.executionStatus === "failed" && status !== "failed") return item;
-                    return { ...item, executionStatus: status, meta: status === "failed" ? translate("canvas.failed_ae7e3c", { value0: statusMessage }) : statusMessage };
-                }),
-                updatedAt: new Date().toISOString(),
-            }));
+            const trimmed = (statusMessage || "").trim();
+            if (!trimmed || /^子\s*agent\s*正在准备任务$/i.test(trimmed) || /^agent\s+is\s+preparing\s+the\s+task$/i.test(trimmed)) {
+                return;
+            }
+            if (status === "failed" || status === "canceled" || status === "retrying" || status === "diagnosing") {
+                const line = status === "failed" ? translate("canvas.failed_ae7e3c", { value0: trimmed }) : trimmed;
+                appendCanvasDialogueLine(sessionId, line, `plan-${planId}`, status);
+            }
         },
         onPromptPrepared: (planId, _taskId, strategy) => {
             const sessionId = activeAgentSessionIdRef.current;
             if (!sessionId) return;
-            updateAssistantSession(sessionId, (session) => ({
-                ...session,
-                messages: session.messages.map((item) => (item.id === `plan-${planId}` ? { ...item, meta: strategy === "OPTIMIZE" ? translate("canvas.promptOptimized") : translate("canvas.keepOriginalPrompt") } : item)),
-                updatedAt: new Date().toISOString(),
-            }));
+            const label = strategy === "OPTIMIZE" ? translate("canvas.promptOptimized") : translate("canvas.keepOriginalPrompt");
+            const line = /[。！？.!?]$/.test(label) ? label : `${label}。`;
+            appendCanvasDialogueLine(sessionId, line, `plan-${planId}`);
         },
         onError: (errorMessage) => {
             resetThinkings();
@@ -4991,7 +5106,11 @@ function CanvasWorkspacePage() {
             onTrim: (n) => setAudioTrimNodeId(n.id),
             onSplit: (n) => setSplitNodeId(n.id),
             onViewImage: (n) => setPreviewNodeId(n.id),
-            onViewVideo: (n) => setPreviewNodeId(n.id),
+            onViewVideo: (n) => {
+                stopCanvasAudio();
+                setPreviewNodeId(n.id);
+            },
+            onCaptureVideoFrame: captureVideoFrame,
             onRetry: (n) => (isStoryboardNode(n) ? void handleGenerateStoryboard(n) : void handleRetryNode(n)),
             onOpenStoryboard: (node) => setStoryboardWorkspaceNodeId(node.id),
             onOpenDirectorDesk: (node) => setDirectorDeskWorkspaceNodeId(node.id),
@@ -5023,6 +5142,7 @@ function CanvasWorkspacePage() {
         }),
         [
             batchCardStacks,
+            captureVideoFrame,
             collapsingBatchIds,
             confirmDeleteNodes,
             downloadNodeImage,

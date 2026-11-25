@@ -18,7 +18,7 @@ import { cloneImageSizeMappings } from "@/features/generation/lib/image-size-map
 import type { ImageResolution } from "@/features/generation/lib/image-size-mappings";
 import { refreshModelConfigurationSnapshot } from "../lib/model-configuration-refresh";
 
-export type ApiCallFormat = "openai" | "newapi" | "evolink" | "gemini" | "agnes" | "anthropic" | "seedance" | "minimax" | "custom";
+export type ApiCallFormat = "openai" | "nana" | "newapi" | "evolink" | "gemini" | "agnes" | "anthropic" | "seedance" | "minimax" | "custom";
 export type ModelCapability = "image" | "video" | "text";
 export type ModelCreditUnit = "generation" | "second";
 export type VideoGenerationMode = "text-to-video" | "image-to-video" | "reference-to-video" | "first-last-frame-to-video";
@@ -118,6 +118,8 @@ export type AiConfig = {
     videoSeconds: string;
     vquality: string;
     videoWatermark: string;
+    /** 视频生成音频（"true" / "false"），只有能开关声音的模型才生效。 */
+    videoAudio: string;
     videoGenerationMode: VideoGenerationMode;
     systemPrompt: string;
     models: string[];
@@ -183,6 +185,7 @@ export const defaultConfig: AiConfig = {
     videoSeconds: "5",
     vquality: "720p",
     videoWatermark: "false",
+    videoAudio: "true",
     videoGenerationMode: "text-to-video",
     systemPrompt: "",
     models: [],
@@ -376,6 +379,7 @@ export function buildApiUrl(baseUrl: string, path: string) {
 }
 
 export function defaultBaseUrlForApiFormat(apiFormat: ApiCallFormat) {
+    if (apiFormat === "nana") return "https://api.novanovastudio.cn/v1";
     if (apiFormat === "newapi") return "";
     if (apiFormat === "evolink") return "https://api.evolink.ai/v1";
     if (apiFormat === "gemini") return "https://generativelanguage.googleapis.com/v1beta";
@@ -442,12 +446,40 @@ export function modelOptionChannel(config: AiConfig, model: string) {
     return parsed ? config.channels.find((channel) => channel.id === parsed.channelId) : undefined;
 }
 
+const MODEL_NAME_COLLATOR = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
+
+/** 按自然字典序比较模型或渠道名称（忽略大小写，数字分段按数值比较）。 */
+export function compareModelNames(first: string, second: string): number {
+    const normalizedFirst = first.trim();
+    const normalizedSecond = second.trim();
+    return MODEL_NAME_COLLATOR.compare(normalizedFirst, normalizedSecond) || normalizedFirst.localeCompare(normalizedSecond);
+}
+
+/** 按展示名称、真实模型名、渠道名称及完整值比较模型选项，保证同名及同系列模型排列在一起。 */
+export function compareModelOptions(config: Pick<AiConfig, "channels" | "modelDisplayNames">, first: string, second: string): number {
+    const firstValue = first.trim();
+    const secondValue = second.trim();
+    const firstDisplayName = config.modelDisplayNames?.[firstValue] || modelOptionName(firstValue);
+    const secondDisplayName = config.modelDisplayNames?.[secondValue] || modelOptionName(secondValue);
+    return (
+        compareModelNames(firstDisplayName, secondDisplayName)
+        || compareModelNames(modelOptionName(firstValue), modelOptionName(secondValue))
+        || compareModelNames(modelOptionChannel(config as AiConfig, firstValue)?.name || "", modelOptionChannel(config as AiConfig, secondValue)?.name || "")
+        || compareModelNames(firstValue, secondValue)
+    );
+}
+
+/** 对模型选项列表去重并按模型名称自然排序。 */
+export function sortModelOptions(models: string[], config: Pick<AiConfig, "channels" | "modelDisplayNames">): string[] {
+    return uniqueText(models).sort((first, second) => compareModelOptions(config, first, second));
+}
+
 export function modelOptionsFromChannels(channels: ModelChannel[]) {
     return uniqueText(channels.flatMap((channel) => channel.models.map((model) => `${channel.id}${CHANNEL_MODEL_SEPARATOR}${model}`)));
 }
 
 export function selectableModelsByCapability(config: AiConfig, capability?: ModelCapability) {
-    return uniqueText(capability ? capabilityModels(config, capability) : config.models);
+    return sortModelOptions(capability ? capabilityModels(config, capability) : config.models, config);
 }
 
 export function resolveModelRequestConfig(config: AiConfig, model: string): AiConfig {
@@ -475,13 +507,14 @@ function normalizeConfig(config: Partial<AiConfig> = {}): AiConfig {
         channels,
         models,
     };
-    next.imageModels = normalizeCapabilityList(next.imageModels, models, channels);
-    next.videoModels = normalizeCapabilityList(next.videoModels, models, channels);
-    next.textModels = normalizeCapabilityList(next.textModels, models, channels);
+    next.models = sortModelOptions(models, next);
+    next.imageModels = sortModelOptions(normalizeCapabilityList(next.imageModels, next.models, channels), next);
+    next.videoModels = sortModelOptions(normalizeCapabilityList(next.videoModels, next.models, channels), next);
+    next.textModels = sortModelOptions(normalizeCapabilityList(next.textModels, next.models, channels), next);
     next.imageModel = normalizeSelectedModel(next.imageModel, next.imageModels, channels);
     next.videoModel = normalizeSelectedModel(next.videoModel, next.videoModels, channels);
     next.textModel = normalizeSelectedModel(next.textModel, next.textModels, channels);
-    next.model = normalizeSelectedModel(next.model, models, channels) || next.imageModel || next.textModel || next.videoModel;
+    next.model = normalizeSelectedModel(next.model, next.models, channels) || next.imageModel || next.textModel || next.videoModel;
     next.agentModel = normalizeSelectedModel(next.agentModel, next.textModels, channels) || next.textModel;
     next.baseUrl = next.baseUrl || channels[0]?.baseUrl || "";
     next.apiKey = next.apiKey || channels[0]?.apiKey || "";
@@ -667,7 +700,7 @@ function parseModelOption(value: string) {
 }
 
 function normalizeApiFormat(value: unknown): ApiCallFormat {
-    if (value === "newapi" || value === "evolink" || value === "gemini" || value === "agnes" || value === "anthropic" || value === "seedance" || value === "minimax" || value === "custom") return value;
+    if (value === "nana" || value === "newapi" || value === "evolink" || value === "gemini" || value === "agnes" || value === "anthropic" || value === "seedance" || value === "minimax" || value === "custom") return value;
     return "openai";
 }
 

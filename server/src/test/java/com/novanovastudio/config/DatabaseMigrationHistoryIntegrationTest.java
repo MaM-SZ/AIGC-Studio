@@ -55,8 +55,11 @@ class DatabaseMigrationHistoryIntegrationTest {
         assertUserPreserved();
 
         // V76 之后的新迁移只能追加执行，已发布历史不得改写
+        Assertions.assertEquals(21, migration("classpath:db/migration", "98").migrate().migrationsExecuted);
+        List<String> devHistory = readHistory(98);
         Flyway upgraded = migration("classpath:db/migration", "latest");
-        Assertions.assertEquals(21, upgraded.migrate().migrationsExecuted);
+        Assertions.assertEquals(6, upgraded.migrate().migrationsExecuted);
+        Assertions.assertEquals(devHistory, readHistory(98));
         Assertions.assertEquals(history, readHistory(76));
         assertUserPreserved();
         Assertions.assertThrows(FlywayException.class, () -> migration("classpath:db/migration-community", "latest").validate());
@@ -73,9 +76,12 @@ class DatabaseMigrationHistoryIntegrationTest {
         insertUser();
         List<String> history = readHistory(38);
 
+        Assertions.assertEquals(59, migration("classpath:db/migration-community", "98").migrate().migrationsExecuted);
+        List<String> devHistory = readHistory(98);
         Flyway upgraded = migration("classpath:db/migration-community", "latest");
-        Assertions.assertEquals(59, upgraded.migrate().migrationsExecuted);
-        Assertions.assertEquals(97, upgraded.info().applied().length);
+        Assertions.assertEquals(7, upgraded.migrate().migrationsExecuted);
+        Assertions.assertEquals(104, upgraded.info().applied().length);
+        Assertions.assertEquals(devHistory, readHistory(98));
         Assertions.assertEquals(history, readHistory(38));
         assertUserPreserved();
 
@@ -110,7 +116,7 @@ class DatabaseMigrationHistoryIntegrationTest {
         List<String> history = new ArrayList<>();
         try (var connection = DriverManager.getConnection(database.getJdbcUrl(), database.getUsername(), database.getPassword());
              var statement = connection.prepareStatement("SELECT row_to_json(history)::text FROM flyway_schema_history history "
-                     + "WHERE version::integer <= ? ORDER BY installed_rank")) {
+                     + "WHERE version::numeric <= ? ORDER BY installed_rank")) {
             statement.setInt(1, maximumVersion);
             try (var rows = statement.executeQuery()) {
                 while (rows.next()) {

@@ -27,5 +27,8 @@ test("服务端没有浏览器对象时，显示选项也能使用请求语言�
     assert.deepEqual(english.map((option) => option.value), chinese.map((option) => option.value));
     assert.equal(english[0].label, "Text to video");
     assert.equal(chinese[0].label, "文生视频");
-    assert.equal(translateMessage(navigationTools[0].labelKey, undefined, "en"), "Image");
+    const labels = navigationTools.map((tool) => translateMessage(tool.labelKey, undefined, "en"));
+    assert.ok(labels.includes("Image"));
+    assert.ok(labels.includes("Short drama"));
+    assert.ok(labels.includes("Drawing board"));
 });

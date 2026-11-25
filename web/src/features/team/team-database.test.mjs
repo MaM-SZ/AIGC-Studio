@@ -7,7 +7,10 @@ import { PGlite } from "@electric-sql/pglite";
 test("团队迁移、资源授权、钱包隔离与月度账单", async (context) => {
     const database = new PGlite();
     const migrationDirectory = new URL("../../../../server/src/main/resources/db/migration/", import.meta.url);
-    const files = (await readdir(migrationDirectory)).filter((name) => /^V\d+__.*\.sql$/.test(name)).sort((left, right) => Number(left.match(/^V(\d+)/)[1]) - Number(right.match(/^V(\d+)/)[1]));
+    const versionedMigration = /^V(\d+(?:[._]\d+)*)__.*\.sql$/;
+    const files = (await readdir(migrationDirectory))
+        .filter((name) => versionedMigration.test(name))
+        .sort((left, right) => left.split("__", 1)[0].localeCompare(right.split("__", 1)[0], "en", { numeric: true }));
     try {
         for (const file of files) {
             if (file.endsWith("__Add_Team_Wallets_And_Storage_Billing.sql")) await database.exec(`

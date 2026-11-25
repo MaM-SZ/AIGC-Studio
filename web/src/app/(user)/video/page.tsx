@@ -31,6 +31,7 @@ import { ImageSettingsPanel } from "@/features/generation/components/image-setti
 import { MEDIA_FALLBACK_IMAGE, MediaPreview, useMediaFallback } from "@/features/generation/components/media-fallback";
 import { useVideoListCover, VideoListCover } from "@/features/generation/components/video-list-cover";
 import { sizeFromAspectRatio, VideoSettingsPanel, videoResolutionLabel, videoSecondsLabel, videoSizeLabel } from "@/features/generation/components/video-settings-panel";
+import { videoAudioParameter } from "@/features/generation/lib/video-audio";
 import type { CreationComposerAction, CreationConversationItem, CreationReferenceChip, CreationStyleOption, CreationThreadRound, CreationThreadSection } from "@/features/generation/components/creation-workspace-types";
 import { seedanceReferenceLabel, SEEDANCE_REFERENCE_LIMITS } from "@/features/generation/lib/seedance-video";
 import { readVideoGenerationConstraintIssue, readVideoModelConfiguration } from "@/features/generation/lib/video-generation-constraints";
@@ -168,6 +169,9 @@ type WorkflowTaskSnapshot = {
 type RoundConfig = Pick<AiConfig, "model" | "videoModel" | "size" | "vquality" | "videoSeconds" | "videoWatermark"> & {
     imageModel?: string;
     videoGenerationMode?: AiConfig["videoGenerationMode"];
+    /** 生成音频：待生成轮次记作 videoAudio，任务参数记作 generateAudio。 */
+    videoAudio?: boolean | string;
+    generateAudio?: boolean | string;
     resolution?: string;
     seconds?: string;
     imageSize?: string;
@@ -448,6 +452,7 @@ export default function VideoPage() {
                 updateConfig("size", settings.size);
                 updateConfig("videoSeconds", settings.videoSeconds);
                 updateConfig("videoWatermark", settings.videoWatermark);
+                updateConfig("videoAudio", settings.videoAudio);
             })
             .catch((error) => console.error("读取上次视频生成设置失败", error));
     }, [configHydrated, updateConfig]);
@@ -564,11 +569,12 @@ export default function VideoPage() {
             return { ...base, ...patch };
         });
     };
-    /** 视频设置面板键映射到工作流视频参数选择（生成模式/水印/数量不适用，固定引用配置）。 */
-    const handleWorkflowVideoSettingChange = (key: "videoGenerationMode" | "vquality" | "size" | "videoSeconds" | "videoWatermark", value: string) => {
+    /** 视频设置面板键映射到工作流视频参数选择（生成模式/水印/数量不适用，固定引用配置；生成音频沿用页面设置）。 */
+    const handleWorkflowVideoSettingChange = (key: "videoGenerationMode" | "vquality" | "size" | "videoSeconds" | "videoWatermark" | "videoAudio", value: string) => {
         if (key === "vquality") updateWorkflowVideoSelection({ resolution: value });
         else if (key === "size") updateWorkflowVideoSelection({ size: value });
         else if (key === "videoSeconds") updateWorkflowVideoSelection({ seconds: value });
+        else if (key === "videoAudio") handleVideoSettingsChange("videoAudio", value);
     };
     const model = effectiveConfig.videoModel || effectiveConfig.model;
     const videoResolution = config.vquality || "720p";
@@ -581,6 +587,8 @@ export default function VideoPage() {
         quality: workflowImageConfirmNext ? (workflowVideoResolution.includes("1080") ? "high" : workflowVideoResolution.includes("480") ? "low" : "medium") : videoResolution.includes("1080") ? "high" : videoResolution.includes("480") ? "low" : "medium",
         seconds: workflowImageConfirmNext ? workflowVideoSeconds : config.videoSeconds || "5",
         watermark: String(config.videoWatermark).toLowerCase() === "true",
+        // 生成音频只在能开关声音的模型上带
+        ...videoAudioParameter(effectiveConfig, model),
         videoGenerationMode: config.videoGenerationMode,
         imageSize: workflowImageSize,
         imageResolution: workflowImageResolution,
@@ -690,17 +698,20 @@ export default function VideoPage() {
             const streamed = streamingTextRef.current;
             setChatMessages((prev) => {
                 let next = finishRoundAgentActivities(prev, text || translate("video.completed"));
+                const lastUserIndex = next.findLastIndex((item) => item.role === "user");
+                const currentRoundAssistantIndex = next.findLastIndex((item, index) => index > lastUserIndex && item.role === "assistant");
                 if (streamed && streamed.text) {
-                    const assistantMessage = { id: streamed.messageId, role: "assistant" as const, text: streamed.text, ...(action ? { action } : {}) };
-                    next = next.some((item) => item.id === streamed.messageId) ? next.map((item) => (item.id === streamed.messageId ? { ...item, ...(action ? { action } : {}) } : item)) : [...next, assistantMessage];
+                    const finalText = text && text.length >= streamed.text.length ? text : streamed.text;
+                    const assistantMessage = { id: streamed.messageId, role: "assistant" as const, text: finalText, ...(action ? { action } : {}) };
+                    next = next.some((item) => item.id === streamed.messageId)
+                        ? next.map((item) => (item.id === streamed.messageId ? { ...item, text: finalText, ...(action ? { action } : {}) } : item))
+                        : [...next, assistantMessage];
+                } else if (currentRoundAssistantIndex >= 0) {
+                    if (action) {
+                        next = next.map((item, index) => (index === currentRoundAssistantIndex ? { ...item, action } : item));
+                    }
                 } else if (text || action) {
-                    const lastMessage = next.at(-1);
-                    next =
-                        lastMessage?.role === "assistant" && lastMessage.text === text
-                            ? action
-                                ? next.map((item, index) => (index === next.length - 1 ? { ...item, action } : item))
-                                : next
-                            : [...next, { id: messageId || nanoid(), role: "assistant" as const, text, ...(action ? { action } : {}) }];
+                    next = [...next, { id: messageId || nanoid(), role: "assistant" as const, text, ...(action ? { action } : {}) }];
                 }
                 chatMessagesRef.current = next;
                 return next;
@@ -1444,6 +1455,8 @@ export default function VideoPage() {
                 ...(round.config.videoSeconds ? { seconds: round.config.videoSeconds } : {}),
                 videoGenerationMode: round.config.videoGenerationMode || "text-to-video",
                 ...(round.config.videoWatermark !== undefined && round.config.videoWatermark !== null ? { watermark: String(round.config.videoWatermark).toLowerCase() === "true" } : {}),
+                // 历史轮次的模型可能和当前不同：生成音频按轮次的模型重新判断，只有能开关声音的才带
+                ...videoAudioParameter({ ...effectiveConfig, videoAudio: String(round.config.videoAudio ?? round.config.generateAudio ?? effectiveConfig.videoAudio) }, videoModel),
                 ...(round.generationStyleSnapshots?.length ? { generationStyleSnapshots: round.generationStyleSnapshots } : {}),
             },
             round.skill ? String(round.skill.id) : undefined,
@@ -2138,7 +2151,7 @@ export default function VideoPage() {
                     onClose: closeVideoSettings,
                     content: (
                         <div className="space-y-4">
-                            <VideoSettingsPanel config={config} onConfigChange={handleVideoSettingsChange} theme={theme} showTitle={false} className="space-y-4 px-0 py-0" />
+                            <VideoSettingsPanel config={config} onConfigChange={handleVideoSettingsChange} onAudioChange={(value) => handleVideoSettingsChange("videoAudio", value)} theme={theme} showTitle={false} className="space-y-4 px-0 py-0" />
                             {activeQuote !== null && (!activeQuote.available || (!selectedSkill?.workflowType && referenceIssue) || workflowBalanceInsufficient) ? (
                                 <div className="flex items-start gap-1.5 text-xs leading-relaxed" style={{ color: theme.node.muted }}>
                                     <HelpCircle className="mt-px size-3.5 shrink-0" />

@@ -218,8 +218,12 @@ public class ComicDramaService {
      * @return 资产版本列表
      */
     public Mono<List<ComicDramaDtos.AssetVersion>> listAssetVersions(ComicDramaDtos.ListAssetVersionsRequest request) {
-        return withProject(request.projectId(), () -> repository.listAssetVersions(request.projectId(), request.assetId()).collectList())
-                .flatMap(versions -> Flux.fromIterable(versions).concatMap(this::signedAssetVersion).collectList());
+        return withProject(request.projectId(), () -> Mono.zip(
+                        repository.getAsset(request.projectId(), request.assetId()).switchIfEmpty(notFound("视觉资产不存在")),
+                        repository.listAssetVersions(request.projectId(), request.assetId()).collectList()))
+                .flatMap(tuple -> Flux.fromIterable(tuple.getT2())
+                        .concatMap(version -> signedAssetVersion(withAssetDescription(version, tuple.getT1().description())))
+                        .collectList());
     }
 
     /** 按版本标识批量查询当前项目内的资产版本。 */
@@ -239,10 +243,23 @@ public class ComicDramaService {
         return currentUserProvider.currentUserId().flatMap(userId -> transactionalOperator.transactional(
                 requireProjectRevision(userId, request.projectId(), request.expectedRevision())
                         .then(repository.getAsset(request.projectId(), request.version().assetId()).switchIfEmpty(notFound("视觉资产不存在")))
-                        .then(repository.saveAssetVersion(request.version()).switchIfEmpty(conflict()))
+                        .flatMap(asset -> repository.saveAssetVersion(withAssetDescription(request.version(), asset.description())).switchIfEmpty(conflict()))
                         .then(repository.markUpstreamChanges(request.projectId(), "assetVersion", List.of(request.version().id()), "视觉资产版本发生变化"))
                         .then(advance(userId, request.projectId(), request.expectedRevision()))
                         .then(repository.getAssetVersion(request.projectId(), request.version().id()))).flatMap(this::signedAssetVersion));
+    }
+
+    /**
+     * 版本外观描述统一取资产描述，避免版本里残留模型改写过的文案。
+     *
+     * @param version ComicDramaDtos.AssetVersion 待保存版本
+     * @param description String 资产当前外观描述
+     * @return ComicDramaDtos.AssetVersion 描述已对齐的版本
+     */
+    private ComicDramaDtos.AssetVersion withAssetDescription(ComicDramaDtos.AssetVersion version, String description) {
+        return new ComicDramaDtos.AssetVersion(version.id(), version.assetId(), version.versionName(), version.variantType(),
+                text(description), version.referenceMedia(), version.attributes(), version.status(), version.revision(),
+                version.createdAt(), version.updatedAt());
     }
 
     /**
@@ -259,7 +276,7 @@ public class ComicDramaService {
     }
 
     /**
-     * 复用分镜Agent生成待确认镜头草稿。
+     * 复用分镜Agent生成待确认镜头草稿；拆分整集时按场次并发拆分并自动合并资产与场次归属。
      *
      * @param request 自动拆镜头请求
      * @return 已持久化草稿
@@ -268,41 +285,39 @@ public class ComicDramaService {
         if (!request.confirmed()) {
             return Mono.error(new BusinessException(ErrorCode.BUSINESS_ERROR, "生成镜头草稿前必须明确确认费用"));
         }
+        String episodeId = StringUtils.hasText(request.episodeId()) ? request.episodeId().trim() : null;
+        String sceneId = StringUtils.hasText(request.sceneId()) ? request.sceneId().trim() : null;
         return currentUserProvider.currentUserId().flatMap(userId -> requireProject(userId, request.projectId()).flatMap(project ->
-                repository.getShotGenerationSource(request.projectId(), request.episodeId(), request.sceneId())
-                        .switchIfEmpty(notFound("未找到可拆分的剧本范围"))
-                        .flatMap(source -> {
-                            if (!StringUtils.hasText(source.scriptContent())) {
-                                return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "所选范围没有可用剧本正文"));
+                repository.validateShotSourceReferences(request.projectId(), episodeId, sceneId)
+                        .flatMap(valid -> valid ? Mono.empty() : notFound("未找到可拆分的剧本范围"))
+                        .then(repository.listShotGenerationScenes(request.projectId(), episodeId, sceneId).collectList())
+                        .flatMap(scenes -> {
+                            ComicDramaShotBreakdownPlanner.BreakdownPlan plan;
+                            try {
+                                plan = ComicDramaShotBreakdownPlanner.buildPlan(scenes, request);
+                            } catch (BusinessException exception) {
+                                return Mono.error(exception);
                             }
-                            // 预计镜头数量可以不填：不填时按正文体量和单镜头时长估算，填了就必须按填的数量来。
-                            // 创作重点同样可选，没填就不带这一段，避免指令里留下空的「创作重点：」。
-                            String instruction = shotPlanInstruction(request.shotCount(), request.shotDuration(), source.scriptContent())
-                                    + "。节奏：" + text(request.rhythm())
-                                    + "。单镜头时长：" + shotDurationInstruction(request.shotDuration())
-                                    + (StringUtils.hasText(request.focus()) ? "。创作重点：" + request.focus().trim() : "");
-                            Mono<String> sourceEpisode = StringUtils.hasText(request.sceneId())
-                                    ? repository.getSceneEpisodeId(request.projectId(), request.sceneId())
-                                    : Mono.just(text(request.episodeId()));
-                            return sourceEpisode.defaultIfEmpty("").flatMap(resolvedEpisodeId -> storyboardAgentService.generateStoryboard(
-                                    new StoryboardDtos.GenerateStoryboardRequest(source.scriptContent(), instruction,
-                                            source.visualStyle(), request.model()))
-                                    .flatMap(response -> {
-                                        JSONObject data = (JSONObject) JSON.toJSON(alignShotDurations(response, request.shotDuration()));
-                                        data.put("sourceScriptExcerpt", source.scriptContent());
-                                        data.put("sourceEpisodeId", resolvedEpisodeId);
-                                        data.put("sourceSceneId", text(request.sceneId()));
+                            List<StoryboardDtos.GenerateStoryboardRequest> agentRequests = plan.segments().stream()
+                                    .map(ComicDramaShotBreakdownPlanner.SegmentPlan::agentRequest)
+                                    .toList();
+                            log.info("开始生成漫剧镜头草稿: projectId={}, scopeType={}, segmentCount={}, shotDuration={}",
+                                    request.projectId(), scopeType(request), agentRequests.size(), request.shotDuration());
+                            return storyboardAgentService.generateStoryboardSegments(agentRequests, request.model())
+                                    .flatMap(result -> {
+                                        JSONObject data = ComicDramaShotBreakdownPlanner.mergeSegmentResults(
+                                                plan, result, request.shotDuration());
                                         ComicDramaDtos.ShotDraft draft = new ComicDramaDtos.ShotDraft(id(), request.projectId(),
-                                                scopeType(request), scopeId(request), project.revision(), source.scriptRevision(),
-                                                instruction, request.model(), data, response.chargedCredits(), "pending",
+                                                scopeType(request), scopeId(request), project.revision(), plan.scriptRevision(),
+                                                plan.summaryInstruction(), request.model(), data, result.chargedCredits(), "pending",
                                                 OffsetDateTime.now(), null);
                                         return repository.createShotDraft(userId, draft).thenReturn(draft);
-                                    }));
+                                    });
                         })));
     }
 
     /**
-     * 确认镜头草稿并追加为正式镜头，不覆盖已有镜头。
+     * 确认镜头草稿并按草稿拆分范围（项目、分集或场次）覆盖替换原有镜头，保留范围外的其他镜头并连续重排镜号。
      *
      * @param request 草稿确认请求
      * @return 最新项目修订信息
@@ -319,41 +334,66 @@ public class ComicDramaService {
                     return repository.listShots(request.projectId(), null, null).collectList().flatMap(existing -> {
                         StoryboardDtos.GenerateStoryboardResponse response = draft.draftData()
                                 .toJavaObject(StoryboardDtos.GenerateStoryboardResponse.class);
-                        String sourceEpisodeId = text(draft.draftData().getString("sourceEpisodeId"));
-                        String sourceSceneId = text(draft.draftData().getString("sourceSceneId"));
+                        var distinctOrigins = ComicDramaShotBreakdownPlanner.distinctSourceReferences(
+                                draft.draftData(), response.shots());
+                        ComicDramaShotBreakdownPlanner.ReplacementPlan replacementPlan =
+                                ComicDramaShotBreakdownPlanner.planReplacement(draft, existing, scriptProject.episodes());
                         return buildDraftAssetPlans(request.projectId(), request.draftId(), scriptProject, response)
-                                .flatMap(assetPlans -> repository.validateShotSourceReferences(request.projectId(),
-                                                sourceEpisodeId.isEmpty() ? null : sourceEpisodeId,
-                                                sourceSceneId.isEmpty() ? null : sourceSceneId)
-                                        .flatMap(valid -> valid ? Mono.just(existing.size())
+                                .flatMap(assetPlans -> Flux.fromIterable(distinctOrigins)
+                                        .concatMap(origin -> repository.validateShotSourceReferences(request.projectId(),
+                                                origin.getKey().isEmpty() ? null : origin.getKey(),
+                                                origin.getValue().isEmpty() ? null : origin.getValue()))
+                                        .all(Boolean::booleanValue)
+                                        .flatMap(valid -> valid ? Mono.empty()
                                                 : Mono.error(new BusinessException(ErrorCode.PARAM_INVALID,
                                                         "镜头草稿的来源分集或场次不属于当前项目")))
-                                        .flatMap(start -> transactionalOperator.transactional(
-                                                persistDraftAssets(request.projectId(), assetPlans.values())
-                                                .thenMany(Flux.fromIterable(response.shots()).index())
-                                                .concatMap(item -> {
-                                                    StoryboardDtos.StoryboardShot source = item.getT2();
-                                                    List<String> assetVersionIds = source.assetIds().stream()
-                                                            .map(assetId -> assetPlans.get(assetId).version().id()).toList();
-                                                    ComicDramaDtos.Shot shot = new ComicDramaDtos.Shot(id(),
-                                                            sourceEpisodeId.isEmpty() ? null : sourceEpisodeId,
-                                                            sourceSceneId.isEmpty() ? null : sourceSceneId,
-                                                            text(draft.draftData().getString("sourceScriptExcerpt")),
-                                                            start + item.getT1().intValue() + 1, start + item.getT1().intValue(),
-                                                            BigDecimal.valueOf(source.durationSeconds()), source.shotSize(), "",
-                                                            source.visualDescription(), "", source.cameraMovement(), source.lightingAtmosphere(),
-                                                            source.dialogueVoiceover(), source.soundEffect(), "", "draft",
-                                                            assetVersionIds, 0, null, null);
-                                                    return repository.saveShot(request.projectId(), shot).switchIfEmpty(conflict())
-                                                            .then(repository.replaceShotAssetVersions(
-                                                                    request.projectId(), shot.id(), assetVersionIds))
-                                                            .flatMap(inserted -> inserted == assetVersionIds.size()
-                                                                    ? Mono.empty() : conflict());
-                                                }).then(repository.confirmShotDraft(request.projectId(), request.draftId())
-                                                        .flatMap(count -> count == 1 ? Mono.empty() : conflict()))
-                                                .then(advance(userId, request.projectId(), request.expectedRevision()))
-                                                .then(repository.refreshProjectProductionStatus(request.projectId()))
-                                                .then(requireProject(userId, request.projectId())).map(this::mutationResult))));
+                                        .then(Mono.defer(() -> {
+                                            int insertOffset = replacementPlan.keptBefore().size();
+                                            List<ComicDramaDtos.Shot> createdShots = new ArrayList<>(response.shots().size());
+                                            for (int index = 0; index < response.shots().size(); index++) {
+                                                StoryboardDtos.StoryboardShot source = response.shots().get(index);
+                                                ComicDramaShotBreakdownPlanner.ShotSourceOrigin origin =
+                                                        ComicDramaShotBreakdownPlanner.resolveShotOrigin(draft.draftData(), source.id());
+                                                List<String> assetVersionIds = source.assetIds().stream()
+                                                        .map(assetId -> assetPlans.get(assetId).version().id()).toList();
+                                                createdShots.add(new ComicDramaDtos.Shot(id(),
+                                                        origin.episodeId().isEmpty() ? null : origin.episodeId(),
+                                                        origin.sceneId().isEmpty() ? null : origin.sceneId(),
+                                                        origin.scriptExcerpt(),
+                                                        insertOffset + index + 1, insertOffset + index,
+                                                        BigDecimal.valueOf(source.durationSeconds()), source.shotSize(), "",
+                                                        source.visualDescription(), "", source.cameraMovement(), source.lightingAtmosphere(),
+                                                        source.dialogueVoiceover(), source.soundEffect(), "", "draft",
+                                                        assetVersionIds, 0, null, null));
+                                            }
+                                            List<String> orderedShotIds = new ArrayList<>(
+                                                    replacementPlan.keptBefore().size() + createdShots.size() + replacementPlan.keptAfter().size());
+                                            replacementPlan.keptBefore().forEach(shot -> orderedShotIds.add(shot.id()));
+                                            createdShots.forEach(shot -> orderedShotIds.add(shot.id()));
+                                            replacementPlan.keptAfter().forEach(shot -> orderedShotIds.add(shot.id()));
+                                            boolean hasKeptShots = !replacementPlan.keptBefore().isEmpty()
+                                                    || !replacementPlan.keptAfter().isEmpty();
+
+                                            return transactionalOperator.transactional(
+                                                    persistDraftAssets(request.projectId(), assetPlans.values())
+                                                            .then(repository.deleteShotsForReplacement(
+                                                                    request.projectId(), replacementPlan.replacedShotIds()))
+                                                            .thenMany(Flux.fromIterable(createdShots))
+                                                            .concatMap(shot -> repository.saveShot(request.projectId(), shot)
+                                                                    .switchIfEmpty(conflict())
+                                                                    .then(repository.replaceShotAssetVersions(
+                                                                            request.projectId(), shot.id(), shot.assetVersionIds()))
+                                                                    .flatMap(inserted -> inserted == shot.assetVersionIds().size()
+                                                                            ? Mono.empty() : conflict()))
+                                                            .then(hasKeptShots
+                                                                    ? repository.reorderShots(request.projectId(), orderedShotIds)
+                                                                    : Mono.empty())
+                                                            .then(repository.confirmShotDraft(request.projectId(), request.draftId())
+                                                                    .flatMap(count -> count == 1 ? Mono.empty() : conflict()))
+                                                            .then(advance(userId, request.projectId(), request.expectedRevision()))
+                                                            .then(repository.refreshProjectProductionStatus(request.projectId()))
+                                                            .then(requireProject(userId, request.projectId())).map(this::mutationResult));
+                                        })));
                     });
                 })));
     }
@@ -1232,10 +1272,11 @@ public class ComicDramaService {
         } else if ("assetVersion".equals(request.targetType())) {
             List<String> referenceVersionIds = "image".equals(mediaType) ? referenceAssetVersionIds(request.settings()) : List.of();
             return repository.getAssetVersion(request.projectId(), targetId).switchIfEmpty(notFound("资产版本不存在"))
-                    .flatMap(version -> generatedAssetImageReferences(request.projectId(), referenceVersionIds)
-                            .flatMap(references -> (references.isEmpty() ? Mono.<Void>empty() : aiTaskService.requireImageToImage(request.model()))
-                                    .thenReturn(generationPlan(request, targetId, mediaType,
-                                            version.versionName() + "\n" + text(version.appearanceDescription()), references, new JSONObject(), null))));
+                    .flatMap(version -> repository.getAsset(request.projectId(), version.assetId()).switchIfEmpty(notFound("视觉资产不存在"))
+                            .flatMap(asset -> generatedAssetImageReferences(request.projectId(), referenceVersionIds)
+                                    .flatMap(references -> (references.isEmpty() ? Mono.<Void>empty() : aiTaskService.requireImageToImage(request.model()))
+                                            .thenReturn(generationPlan(request, targetId, mediaType,
+                                                    version.versionName() + "\n" + text(asset.description()), references, new JSONObject(), null)))));
         } else {
             return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "生成目标仅支持shot或assetVersion"));
         }
@@ -1346,7 +1387,7 @@ public class ComicDramaService {
                     .flatMap(tuple -> repository.getAsset(request.projectId(), tuple.getT1().assetId()).flatMap(asset ->
                             storyboardAgentService.createAssetImageTask(new StoryboardDtos.CreateAssetImageTaskRequest(
                                     request.projectId(), new StoryboardDtos.StoryboardAsset(targetId, asset.assetType(),
-                                    asset.name() + "-" + tuple.getT1().versionName(), tuple.getT1().appearanceDescription()),
+                                    asset.name() + "-" + tuple.getT1().versionName(), text(asset.description())),
                                     StringUtils.hasText(request.settings().getString("visualStyle"))
                                             ? request.settings().getString("visualStyle") : tuple.getT2().visualStyle(),
                                     request.model(), new StoryboardDtos.AssetImageSettings(
@@ -1420,14 +1461,16 @@ public class ComicDramaService {
                     reused = byName.get(source.kind() + "\u0000" + name);
                 }
                 String assetId = reused == null ? source.id() : reused.id();
+                // 复用已有资产时沿用用户当前看到的外观描述，分镜 Agent 的新文案只记录在草稿里，不再覆盖版本描述。
+                String description = text(reused == null ? source.description() : reused.description());
                 JSONObject attributes = new JSONObject();
                 attributes.put("source", "shotDraft");
                 attributes.put("draftId", draftId);
                 ComicDramaDtos.Asset asset = new ComicDramaDtos.Asset(assetId, source.kind(), sourceEntityId, name,
-                        text(source.description()), new JSONObject(), "active",
+                        description, new JSONObject(), "active",
                         reused == null ? 0 : reused.revision(), null, null);
                 ComicDramaDtos.AssetVersion version = new ComicDramaDtos.AssetVersion(id(), assetId, "初始版本",
-                        "default", text(source.description()), List.of(), attributes, "active", 0, null, null);
+                        "default", description, List.of(), attributes, "active", 0, null, null);
                 plans.put(source.id(), new DraftAssetPlan(asset, version, reused != null));
             }
             return plans;
@@ -1560,7 +1603,8 @@ public class ComicDramaService {
      */
     static String shotPlanInstruction(Integer shotCount, String shotDuration, String scriptContent) {
         if (shotCount != null) {
-            return "请拆分为约" + shotCount + "个镜头";
+            int capped = Math.min(StoryboardDtos.MAX_SHOT_COUNT, Math.max(1, shotCount));
+            return "请拆分为约" + capped + "个镜头";
         }
         int count = estimateShotCount(shotDuration, scriptContent);
         return "请结合正文体量拆分为约" + count
@@ -1568,22 +1612,23 @@ public class ComicDramaService {
     }
 
     /**
-     * 按正文体量和单镜头时长估算镜头数量。
+     * 按正文体量和单镜头时长估算镜头数量，并限制在单次自动估算上限以内。
      * <p>
      * 中文对白大约每秒 4 个字，动作描述按同样密度折成画面时间。简短按 5 秒、中等按 7 秒、超长按 12 秒，
      * 所以同一段正文在超长档的镜头数更少，在简短档更多。
      *
      * @param shotDuration 时长档位：short、medium、long
      * @param scriptContent 本次拆分的剧本正文
-     * @return 至少为 1 的镜头数量
+     * @return 落在 1 到 MAX_AUTO_SHOT_COUNT 之间的镜头数量
      */
     static int estimateShotCount(String shotDuration, String scriptContent) {
         int units = countScriptUnits(scriptContent);
-        int unitsPerShot = preferredShotSeconds(shotDuration) * 4;
+        int unitsPerShot = preferredShotSecondsForLevel(shotDuration) * 4;
         if (units == 0) {
             return 1;
         }
-        return Math.max(1, (units + unitsPerShot / 2) / unitsPerShot);
+        return Math.min(ComicDramaShotBreakdownPlanner.MAX_AUTO_SHOT_COUNT,
+                Math.max(1, (units + unitsPerShot / 2) / unitsPerShot));
     }
 
     /**
@@ -1621,7 +1666,7 @@ public class ComicDramaService {
      * @param shotDuration 时长档位：short、medium、long
      * @return 代表秒数
      */
-    private static int preferredShotSeconds(String shotDuration) {
+    static int preferredShotSecondsForLevel(String shotDuration) {
         return switch (shotDuration) {
             case "short" -> 5;
             case "medium" -> 7;

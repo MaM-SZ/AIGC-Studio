@@ -85,7 +85,7 @@ public class AiHttpClient {
             return ensureProviderRequestAccepted(normalizedMethod).then(callBlocking(() -> {
             String url = buildAiUrl(channel.baseUrl(), path);
             String jsonBody = "POST".equals(normalizedMethod) ? AiJsonUtils.toJson(payload) : "";
-            log.info("AI请求: {} {} body={}", normalizedMethod, url, jsonBody.length() > 2000 ? jsonBody.substring(0, 2000) + "..." : jsonBody);
+            log.info("AI请求: {} {} body={}", normalizedMethod, url, jsonBody.length() > 10000 ? jsonBody.substring(0, 10000) + "..." : jsonBody);
             HttpRequest.Builder builder = baseBearerRequest(channel, path).header("Content-Type", "application/json");
             applyRequestMethod(builder, normalizedMethod, jsonBody);
             HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
@@ -565,9 +565,37 @@ public class AiHttpClient {
      * @return Mono<GeneratedBinary> 二进制内容
      */
     public Mono<GeneratedBinary> downloadRemoteBinary(String url, String defaultMimeType) {
+        return downloadRemoteBinary(url, defaultMimeType, Duration.ofMinutes(5), null);
+    }
+
+    /**
+     * 下载远程媒体二进制内容，读取阶段受总体时限约束。
+     * <p>
+     * 上游媒体站被限速时单次读取会一直阻塞，请求超时只覆盖响应头，必须自己按截止时间中断读取。
+     *
+     * @param url String 远程媒体地址
+     * @param defaultMimeType String 默认MIME类型
+     * @param budget Duration 连接、响应和读取的总时限
+     * @return Mono<GeneratedBinary> 二进制内容
+     */
+    public Mono<GeneratedBinary> downloadRemoteBinary(String url, String defaultMimeType, Duration budget) {
+        return downloadRemoteBinary(url, defaultMimeType, budget, budget);
+    }
+
+    /**
+     * 下载远程媒体二进制内容
+     *
+     * @param url String 远程媒体地址
+     * @param defaultMimeType String 默认MIME类型
+     * @param requestTimeout Duration 请求超时
+     * @param readBudget Duration 读取时限，为空表示不限
+     * @return Mono<GeneratedBinary> 二进制内容
+     */
+    private Mono<GeneratedBinary> downloadRemoteBinary(String url, String defaultMimeType, Duration requestTimeout, Duration readBudget) {
         return callBlocking(() -> {
             URI uri = validateRemoteMediaUri(url);
-            HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofMinutes(5)).GET().build();
+            HttpRequest request = HttpRequest.newBuilder(uri).timeout(requestTimeout).GET().build();
+            long readDeadlineNanos = readBudget == null ? Long.MAX_VALUE : System.nanoTime() + readBudget.toNanos();
             HttpResponse<InputStream> response = remoteMediaHttpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
             try (InputStream inputStream = response.body()) {
                 if (response.statusCode() < 200 || response.statusCode() >= 300) {
@@ -578,7 +606,7 @@ public class AiHttpClient {
                     throw new BusinessException(ErrorCode.BUSINESS_ERROR, SystemMessage.of("business.remoteMediaExceeds100MB"));
                 }
                 String mimeType = response.headers().firstValue("Content-Type").orElse(defaultMimeType);
-                return new GeneratedBinary(readLimitedMediaData(inputStream), AiTaskParameterReader.firstNonEmpty(mimeType, defaultMimeType));
+                return new GeneratedBinary(readLimitedMediaData(inputStream, readDeadlineNanos), AiTaskParameterReader.firstNonEmpty(mimeType, defaultMimeType));
             }
         });
     }
@@ -727,7 +755,7 @@ public class AiHttpClient {
             throw new BusinessException(ErrorCode.PARAM_MISSING, SystemMessage.of("business.aPIFormatIsRequired"));
         }
         String normalizedFormat = apiFormat.trim().toLowerCase(Locale.ROOT);
-        Set<String> supportedFormats = Set.of("openai", "newapi", "evolink", "gemini", "anthropic", "agnes", "seedance", "minimax", "custom");
+        Set<String> supportedFormats = Set.of("openai", "nana", "newapi", "evolink", "gemini", "anthropic", "agnes", "seedance", "minimax", "custom");
         if (!supportedFormats.contains(normalizedFormat)) {
             throw new BusinessException(ErrorCode.PARAM_INVALID, SystemMessage.of("business.unsupportedAPIFormat", normalizedFormat));
         }
@@ -749,6 +777,7 @@ public class AiHttpClient {
         String url = switch (apiFormat) {
             case "gemini" -> buildGeminiUrl(baseUrl, "/models");
             case "anthropic" -> buildAnthropicUrl(baseUrl, "/v1/models");
+            case "nana" -> buildAiUrl(buildNanaBaseUrl(baseUrl), "/models");
             default -> buildAiUrl(baseUrl, "/models");
         };
         try {
@@ -873,6 +902,18 @@ public class AiHttpClient {
      * @throws Exception 读取失败或超过大小限制时抛出
      */
     private byte[] readLimitedMediaData(InputStream inputStream) throws Exception {
+        return readLimitedMediaData(inputStream, Long.MAX_VALUE);
+    }
+
+    /**
+     * 限制读取远程媒体数据，超过截止时间立即中断。
+     *
+     * @param inputStream InputStream 远程响应流
+     * @param readDeadlineNanos long 读取截止时间（System.nanoTime），Long.MAX_VALUE 表示不限
+     * @return byte[] 已读取的媒体数据
+     * @throws Exception 读取失败、超过大小限制或超时时抛出
+     */
+    private byte[] readLimitedMediaData(InputStream inputStream, long readDeadlineNanos) throws Exception {
         try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192];
             long totalBytes = 0L;
@@ -883,6 +924,9 @@ public class AiHttpClient {
                     throw new BusinessException(ErrorCode.BUSINESS_ERROR, SystemMessage.of("business.remoteMediaExceeds100MB"));
                 }
                 outputStream.write(buffer, 0, readBytes);
+                if (System.nanoTime() > readDeadlineNanos) {
+                    throw new java.net.http.HttpTimeoutException("remote media download timed out after " + totalBytes + " bytes");
+                }
             }
             return outputStream.toByteArray();
         }
@@ -956,6 +1000,28 @@ public class AiHttpClient {
     public static String buildAiUrl(String baseUrl, String path) {
         String normalized = baseUrl == null ? "" : baseUrl.trim().replaceAll("/+$", "");
         return normalized + path;
+    }
+
+    /**
+     * 构建 NANA-API 的 OpenAI 兼容基础地址，缺少版本前缀时补 /v1。
+     *
+     * @param baseUrl String 渠道基础地址
+     * @return String 带 /v1 的基础地址
+     */
+    public static String buildNanaBaseUrl(String baseUrl) {
+        String normalized = baseUrl == null ? "" : baseUrl.trim().replaceAll("/+$", "");
+        return normalized.toLowerCase(Locale.ROOT).endsWith("/v1") ? normalized : normalized + "/v1";
+    }
+
+    /**
+     * 构建 NANA-API 的站点根地址，用于不带 /v1 前缀的视频协议路径。
+     *
+     * @param baseUrl String 渠道基础地址
+     * @return String 站点根地址
+     */
+    public static String buildNanaOriginUrl(String baseUrl) {
+        String normalized = buildNanaBaseUrl(baseUrl);
+        return normalized.substring(0, normalized.length() - 3);
     }
 
     /**

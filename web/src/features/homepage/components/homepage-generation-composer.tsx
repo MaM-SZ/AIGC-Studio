@@ -558,7 +558,7 @@ export function HomepageGenerationComposer({ prompt, onPromptChange, target, onT
             />
             <CreationSettingsModal open={settingsOpen} title={translate(target === "image" ? "image.imageSettings" : "video.videoSettings")} onClose={() => setSettingsOpen(false)}>
                 <div className="space-y-4">
-                    {target === "image" ? <ImageSettingsPanel config={config} onConfigChange={updateImageSetting} theme={theme} showTitle={false} showCount={false} className="space-y-4 px-0 py-0" /> : <VideoSettingsPanel config={config} onConfigChange={updateVideoSetting} theme={theme} showTitle={false} className="space-y-4 px-0 py-0" />}
+                    {target === "image" ? <ImageSettingsPanel config={config} onConfigChange={updateImageSetting} theme={theme} showTitle={false} showCount={false} className="space-y-4 px-0 py-0" /> : <VideoSettingsPanel config={config} onConfigChange={updateVideoSetting} onAudioChange={(value) => updateVideoSetting("videoAudio", value)} theme={theme} showTitle={false} className="space-y-4 px-0 py-0" />}
                 </div>
             </CreationSettingsModal>
             <PromptSelectDialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen} onSelect={onPromptChange} />

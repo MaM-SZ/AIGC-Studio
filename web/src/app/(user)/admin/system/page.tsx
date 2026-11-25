@@ -17,7 +17,7 @@ import dayjs, { type Dayjs } from "dayjs";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, App, Button, Checkbox, DatePicker, Drawer, Empty, Form, Input, InputNumber, Modal, Pagination, Segmented, Select, Skeleton, Space, Table, Tabs, Tag, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { Activity, Bell, BookText, Check, ChevronDown, ClipboardCheck, Coins, Edit, HardDrive, Image as ImageIcon, LayoutTemplate, Mail, Menu as MenuIcon, Palette, Plus, Power, Search, Send, Settings2, ShieldCheck, Sparkles, Tags, Ticket, Trash2, Upload, UserRound, UsersRound, Video, Wallet, X } from "lucide-react";
+import { Activity, Bell, BookText, Check, ChevronDown, ClipboardCheck, Coins, Edit, HardDrive, Image as ImageIcon, LayoutTemplate, Mail, Menu as MenuIcon, Palette, PanelLeft, Plus, Power, Search, Send, Settings2, ShieldCheck, Sparkles, Tags, Ticket, Trash2, Upload, UserRound, UsersRound, Video, Wallet, X } from "lucide-react";
 
 import {
     adjustServerUserCredits,
@@ -76,6 +76,7 @@ import { ModelConfigTextArea } from "./components/model-config-textarea";
 import { SkillPromptLabel } from "@/features/skill-market/components/skill-prompt-help";
 import { SKILL_PROMPT_ACTIONS } from "@/features/skill-market/lib/skill-prompt-actions";
 import { SystemConfiguration, type ConfigurationTabKey } from "./components/system-configuration";
+import { NavigationMenuManagement } from "./components/navigation-menu-management";
 import { OAuthClientManagement } from "./components/oauth-client-management";
 import { OAuthIntegrationManagement } from "./components/oauth-integration-management";
 import { StandardOAuth2Management } from "./components/standard-oauth2-management";
@@ -83,6 +84,7 @@ import { ResetAccountPasswordModal } from "./components/reset-account-password-m
 import { StorageBillingManagement } from "./components/storage-billing-management";
 import { CreditCardManagement } from "./components/credit-card-management";
 import { ApiLogsManagement } from "./components/api-logs-management";
+import { RevenueStatistics } from "./components/revenue-statistics";
 import { EmailCampaignManagement } from "./components/email-campaign-management";
 import { PaymentSettingsManagement } from "./components/payment-settings-management";
 import { StoryBiblePricingManagement } from "./components/story-bible-pricing-management";
@@ -111,6 +113,8 @@ const UserTrendChart = dynamic(() => import("./components/user-trend-chart").the
 
 type GenerationTypeFilter = "all" | "image" | "video";
 type TrendUnit = "day" | "month";
+/** 积分统计页签：消耗统计与收入统计。 */
+type CreditStatisticsTab = "usage" | "revenue";
 /** 身份认证页签内部的标准渠道页签。 */
 type IdentityAuthTabKey = "oauth" | "standardOAuth2" | "oauthClients";
 
@@ -162,8 +166,10 @@ export default function AdminSystemPage() {
                 ...(!team ? [{ key: "configuration:timeouts", label: translate("administration.timeoutSettings"), tab: "configuration", sub: "timeouts" }] : []),
                 { key: "configuration:community", label: translate("administration.communityConfig"), tab: "configuration", sub: "community" },
                 { key: "configuration:externalLink", label: translate("administration.externalLinkConfig"), tab: "configuration", sub: "externalLink" },
+                ...(!team ? [{ key: "configuration:videoExport", label: translate("administration.videoExportSettings"), tab: "configuration", sub: "videoExport" }] : []),
             ],
         },
+        ...(!team ? [{ key: "navigationMenus", label: translate("administration.menuManagement"), icon: <PanelLeft className="size-4" />, tab: "navigationMenus" }] : []),
         ...(!team ? [{ key: "identityAuth", label: translate("administration.identityAuthentication"), icon: <ShieldCheck className="size-4" />, leaves: [
             { key: "identityAuth:oauth", label: translate("administration.oauthIntegration"), tab: "identityAuth", sub: "oauth" },
             { key: "identityAuth:standardOAuth2", label: translate("administration.standardOAuth2"), tab: "identityAuth", sub: "standardOAuth2" },
@@ -199,6 +205,7 @@ export default function AdminSystemPage() {
     // 内容区仍交给 antd Tabs 管理，保留首次访问才挂载、切回不丢表单草稿的行为，左侧菜单只负责切换。
     const tabItems = [
         { key: "configuration", label: translate("appShell.configurationPreferences"), children: <SystemConfiguration activeTab={configurationTabKey} onTabChange={setConfigurationTabKey} /> },
+        ...(!team ? [{ key: "navigationMenus", label: translate("administration.menuManagement"), children: <NavigationMenuManagement /> }] : []),
         ...(!team ? [{ key: "identityAuth", label: translate("administration.identityAuthentication"), children: <Tabs
             activeKey={identityAuthTabKey}
             onChange={(tabKey) => setIdentityAuthTabKey(tabKey as IdentityAuthTabKey)}
@@ -429,6 +436,7 @@ function CreditConsumptionManagement() {
     const [detailDateRange, setDetailDateRange] = useState<[Dayjs, Dayjs]>(() => [dayjs().subtract(29, "day").startOf("day"), dayjs().endOf("day")]);
     const [detailDirection, setDetailDirection] = useState<"all" | ServerCreditDirection>("all");
     const [detailSource, setDetailSource] = useState<"all" | ServerCreditSource>("all");
+    const [statisticsTab, setStatisticsTab] = useState<CreditStatisticsTab>("usage");
     const [detailKeyword, setDetailKeyword] = useState("");
     const [detailSearchKeyword, setDetailSearchKeyword] = useState("");
     const [selectedUser, setSelectedUser] = useState<ServerUserProfile | null>(null);
@@ -548,7 +556,7 @@ function CreditConsumptionManagement() {
                 />
             </div>
 
-            {hasError ? (
+            {statisticsTab === "usage" && hasError ? (
                 <Alert
                     className="mt-5"
                     type="error"
@@ -567,127 +575,142 @@ function CreditConsumptionManagement() {
                 />
             ) : null}
 
-            <section className="mt-6" aria-labelledby="admin-credit-statistics-title">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                        <h2 id="admin-credit-statistics-title" className="text-base font-semibold text-[var(--studio-ink)]">
-                            {translate("administration.usageStatistics")}</h2>
-                        <p className="mt-1 text-sm text-[var(--studio-muted)]">
-                            {selectedUser ? translate("administration.thisPeriod", { value0: adminCreditUserLabel(selectedUser) }) : translate("administration.allUsersThisPeriod")}{translate("administration.totalUsage")}{formatCredits(totalConsumed)} {translate("administration.credits")}</p>
-                    </div>
-                </div>
-                <div className="grid gap-4 lg:grid-cols-2">
-                    <AdminChartPanel title={translate("administration.imageVsVideoUsage")} loading={overviewQuery.isLoading} empty={!generationDistribution.length}>
-                        <CreditChart type="pie" data={generationDistribution} ariaLabel={translate("administration.adminImageAndVideoUsageChart")} />
-                    </AdminChartPanel>
-                    <AdminChartPanel title={translate("administration.usageByModel")} loading={overviewQuery.isLoading} empty={!modelDistribution.length}>
-                        <CreditChart type="pie" data={modelDistribution} ariaLabel={translate("administration.adminCreditUsageByModel")} />
-                    </AdminChartPanel>
-                    <AdminChartPanel
-                        className="lg:col-span-2"
-                        title={translate("administration.creditUsageTrend")}
-                        loading={overviewQuery.isLoading}
-                        empty={!trend.some((item) => creditAmount(item.value).greaterThan(0))}
-                        extra={
-                            <Segmented
-                                value={trendUnit}
-                                size="small"
-                                options={[
-                                    { label: translate("administration.daily"), value: "day" },
-                                    { label: translate("administration.monthly"), value: "month" },
-                                ]}
-                                onChange={(value) => setTrendUnit(value as TrendUnit)}
-                            />
-                        }
-                    >
-                        <CreditChart type="bar" data={trend} ariaLabel={translate("administration.adminCreditUsageBarChart")} />
-                    </AdminChartPanel>
-                </div>
-            </section>
-
-            <section className="mt-8 border-t border-[var(--studio-line)] pt-6">
+            <section className="mt-6">
                 <Tabs
-                    defaultActiveKey="transactions"
-                    destroyOnHidden
+                    activeKey={statisticsTab}
+                    onChange={(key) => setStatisticsTab(key as CreditStatisticsTab)}
                     items={[
                         {
-                            key: "transactions",
-                            label: translate("administration.creditDetails"),
+                            key: "usage",
+                            label: translate("administration.usageStatistics"),
                             children: (
                                 <div>
-                                    <div className="mb-4 flex flex-wrap items-center gap-3">
-                                        <DatePicker.RangePicker
-                                            value={detailDateRange}
-                                            allowClear={false}
-                                            disabledDate={(date) => date.isAfter(dayjs(), "day")}
-                                            onChange={(nextDateRange) => {
-                                                if (!nextDateRange?.[0] || !nextDateRange[1]) return;
-                                                setDetailDateRange([nextDateRange[0], nextDateRange[1]]);
-                                                resetPage();
-                                            }}
-                                        />
-                                        <Segmented
-                                            value={detailDirection}
-                                            options={createCreditDirectionOptions(translate)}
-                                            onChange={(value) => {
-                                                setDetailDirection(value as "all" | ServerCreditDirection);
-                                                resetPage();
-                                            }}
-                                        />
-                                        <Select
-                                            value={detailSource}
-                                            options={createCreditSourceOptions(translate)}
-                                            className="w-40"
-                                            onChange={(value) => {
-                                                setDetailSource(value as "all" | ServerCreditSource);
-                                                resetPage();
-                                            }}
-                                        />
-                                        <div className="flex items-center gap-3">
-                                            <Input
-                                                placeholder={translate("administration.searchDisplayNameUsernameOrEmail")}
-                                                value={detailKeyword}
-                                                onChange={(event) => setDetailKeyword(event.target.value)}
-                                                onPressEnter={(event) => {
-                                                    if (!event.nativeEvent.isComposing) queryTransactions();
-                                                }}
-                                                className="w-64 max-w-full"
-                                                prefix={<Search className="size-3.5 text-[var(--studio-faint)]" />}
-                                                aria-label={translate("administration.searchDisplayNameUsernameOrEmail")}
-                                                allowClear
-                                            />
-                                            <Button icon={<Search className="size-4" />} loading={transactionsQuery.isFetching} onClick={queryTransactions}>
-                                                {translate("administration.query")}
-                                            </Button>
-                                        </div>
-                                        <span className="ml-auto text-sm tabular-nums text-[var(--studio-muted)]">{transactions?.total || 0} {translate("administration.records")}</span>
+                                    <p className="mb-4 text-sm text-[var(--studio-muted)]">
+                                        {selectedUser ? translate("administration.thisPeriod", { value0: adminCreditUserLabel(selectedUser) }) : translate("administration.allUsersThisPeriod")}{translate("administration.totalUsage")}{formatCredits(totalConsumed)} {translate("administration.credits")}</p>
+                                    <div className="grid gap-4 lg:grid-cols-2">
+                                        <AdminChartPanel title={translate("administration.imageVsVideoUsage")} loading={overviewQuery.isLoading} empty={!generationDistribution.length}>
+                                            <CreditChart type="pie" data={generationDistribution} ariaLabel={translate("administration.adminImageAndVideoUsageChart")} />
+                                        </AdminChartPanel>
+                                        <AdminChartPanel title={translate("administration.usageByModel")} loading={overviewQuery.isLoading} empty={!modelDistribution.length}>
+                                            <CreditChart type="pie" data={modelDistribution} ariaLabel={translate("administration.adminCreditUsageByModel")} />
+                                        </AdminChartPanel>
+                                        <AdminChartPanel
+                                            className="lg:col-span-2"
+                                            title={translate("administration.creditUsageTrend")}
+                                            loading={overviewQuery.isLoading}
+                                            empty={!trend.some((item) => creditAmount(item.value).greaterThan(0))}
+                                            extra={
+                                                <Segmented
+                                                    value={trendUnit}
+                                                    size="small"
+                                                    options={[
+                                                        { label: translate("administration.daily"), value: "day" },
+                                                        { label: translate("administration.monthly"), value: "month" },
+                                                    ]}
+                                                    onChange={(value) => setTrendUnit(value as TrendUnit)}
+                                                />
+                                            }
+                                        >
+                                            <CreditChart type="bar" data={trend} ariaLabel={translate("administration.adminCreditUsageBarChart")} />
+                                        </AdminChartPanel>
                                     </div>
-                                    <Table<ServerAdminCreditTransaction>
-                                        rowKey="id"
-                                        tableLayout="fixed"
-                                        columns={createAdminCreditColumns(translate)}
-                                        dataSource={transactions?.transactions || []}
-                                        loading={transactionsQuery.isLoading}
-                                        pagination={false}
-                                        scroll={{ x: 1_100 }}
-                                        locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={translate("administration.noTransactionsInThisPeriod")} /> }}
-                                    />
-                                    {transactions && transactions.total > CREDIT_TRANSACTION_PAGE_SIZE ? (
-                                        <div className="mt-5 flex justify-end">
-                                            <Pagination current={page} pageSize={CREDIT_TRANSACTION_PAGE_SIZE} total={transactions.total} showSizeChanger={false} onChange={setPage} />
-                                        </div>
-                                    ) : null}
                                 </div>
                             ),
                         },
                         {
-                            key: "tasks",
-                            label: translate("credits.taskRecords"),
-                            children: <TaskRecordPanel admin />,
+                            key: "revenue",
+                            label: translate("administration.revenueStatistics"),
+                            children: <RevenueStatistics userId={selectedUser?.id} startDate={filters.startDate} endDate={filters.endDate} />,
                         },
                     ]}
                 />
             </section>
+
+            {statisticsTab === "usage" ? (
+                <section className="mt-8 border-t border-[var(--studio-line)] pt-6">
+                    <Tabs
+                        defaultActiveKey="transactions"
+                        destroyOnHidden
+                        items={[
+                            {
+                                key: "transactions",
+                                label: translate("administration.creditDetails"),
+                                children: (
+                                    <div>
+                                        <div className="mb-4 flex flex-wrap items-center gap-3">
+                                            <DatePicker.RangePicker
+                                                value={detailDateRange}
+                                                allowClear={false}
+                                                disabledDate={(date) => date.isAfter(dayjs(), "day")}
+                                                onChange={(nextDateRange) => {
+                                                    if (!nextDateRange?.[0] || !nextDateRange[1]) return;
+                                                    setDetailDateRange([nextDateRange[0], nextDateRange[1]]);
+                                                    resetPage();
+                                                }}
+                                            />
+                                            <Segmented
+                                                value={detailDirection}
+                                                options={createCreditDirectionOptions(translate)}
+                                                onChange={(value) => {
+                                                    setDetailDirection(value as "all" | ServerCreditDirection);
+                                                    resetPage();
+                                                }}
+                                            />
+                                            <Select
+                                                value={detailSource}
+                                                options={createCreditSourceOptions(translate)}
+                                                className="w-40"
+                                                onChange={(value) => {
+                                                    setDetailSource(value as "all" | ServerCreditSource);
+                                                    resetPage();
+                                                }}
+                                            />
+                                            <div className="flex items-center gap-3">
+                                                <Input
+                                                    placeholder={translate("administration.searchDisplayNameUsernameOrEmail")}
+                                                    value={detailKeyword}
+                                                    onChange={(event) => setDetailKeyword(event.target.value)}
+                                                    onPressEnter={(event) => {
+                                                        if (!event.nativeEvent.isComposing) queryTransactions();
+                                                    }}
+                                                    className="w-64 max-w-full"
+                                                    prefix={<Search className="size-3.5 text-[var(--studio-faint)]" />}
+                                                    aria-label={translate("administration.searchDisplayNameUsernameOrEmail")}
+                                                    allowClear
+                                                />
+                                                <Button icon={<Search className="size-4" />} loading={transactionsQuery.isFetching} onClick={queryTransactions}>
+                                                    {translate("administration.query")}
+                                                </Button>
+                                            </div>
+                                            <span className="ml-auto text-sm tabular-nums text-[var(--studio-muted)]">{transactions?.total || 0} {translate("administration.records")}</span>
+                                        </div>
+                                        <Table<ServerAdminCreditTransaction>
+                                            rowKey="id"
+                                            tableLayout="fixed"
+                                            columns={createAdminCreditColumns(translate)}
+                                            dataSource={transactions?.transactions || []}
+                                            loading={transactionsQuery.isLoading}
+                                            pagination={false}
+                                            scroll={{ x: 1_100 }}
+                                            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={translate("administration.noTransactionsInThisPeriod")} /> }}
+                                        />
+                                        {transactions && transactions.total > CREDIT_TRANSACTION_PAGE_SIZE ? (
+                                            <div className="mt-5 flex justify-end">
+                                                <Pagination current={page} pageSize={CREDIT_TRANSACTION_PAGE_SIZE} total={transactions.total} showSizeChanger={false} onChange={setPage} />
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ),
+                            },
+                            {
+                                key: "tasks",
+                                label: translate("credits.taskRecords"),
+                                children: <TaskRecordPanel admin />,
+                            },
+                        ]}
+                    />
+                </section>
+            ) : null}
         </div>
     );
 }

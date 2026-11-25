@@ -7,7 +7,10 @@ import { PGlite } from "@electric-sql/pglite";
 test("用户名账号迁移、邀请目标及重置能力", async (context) => {
     const database = new PGlite();
     const migrationDirectory = new URL("../../../../server/src/main/resources/db/migration/", import.meta.url);
-    const files = (await readdir(migrationDirectory)).filter((name) => /^V\d+__.*\.sql$/.test(name)).sort((left, right) => Number(left.match(/^V(\d+)/)[1]) - Number(right.match(/^V(\d+)/)[1]));
+    const versionedMigration = /^V(\d+(?:[._]\d+)*)__.*\.sql$/;
+    const files = (await readdir(migrationDirectory))
+        .filter((name) => versionedMigration.test(name))
+        .sort((left, right) => left.split("__", 1)[0].localeCompare(right.split("__", 1)[0], "en", { numeric: true }));
     const repository = await readFile(new URL("../../../../server/src/main/java/com/novanovastudio/repository/TeamRepository.java", import.meta.url), "utf8");
     const userRepository = await readFile(new URL("../../../../server/src/main/java/com/novanovastudio/repository/UserRepository.java", import.meta.url), "utf8");
     /** 从实际仓储提取固定SQL并绑定命名参数。 */

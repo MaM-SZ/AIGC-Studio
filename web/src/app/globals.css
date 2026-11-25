@@ -1047,11 +1047,17 @@ html[data-theme="purple"] {
     }
 
     .studio-skeleton {
+        --studio-skeleton-highlight: var(--studio-surface-hover);
         min-height: 100%;
         border-radius: 8px;
-        background: linear-gradient(110deg, var(--studio-surface-raised) 25%, var(--studio-surface-hover) 45%, var(--studio-surface-raised) 65%);
+        background: linear-gradient(110deg, var(--studio-surface-raised) 25%, var(--studio-skeleton-highlight) 45%, var(--studio-surface-raised) 65%);
         background-size: 220% 100%;
         animation: studio-skeleton-shimmer 1.6s ease-in-out infinite;
+    }
+
+    .studio-skeleton-media {
+        --studio-skeleton-highlight: var(--studio-line-strong);
+        border-radius: 0;
     }
 
     .studio-media-frame {
@@ -2216,4 +2222,32 @@ body[data-onboarding="active"] .ant-tooltip {
 /* 第四步不展开用户菜单，禁用 hover 避免菜单浮层与引导卡片重叠。 */
 body[data-onboarding="active"] [data-tour="user-menu"] {
     pointer-events: none;
+}
+
+/* 创作流式回复气泡“思考中”扫光动效。 */
+@keyframes streaming-reply-shine {
+    to {
+        background-position: -200% 0;
+    }
+}
+
+.streaming-reply-think-shine {
+    background: linear-gradient(
+        90deg,
+        var(--studio-muted) 20%,
+        var(--studio-ink) 50%,
+        var(--studio-muted) 80%
+    ) 0 0 / 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: streaming-reply-shine 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .streaming-reply-think-shine {
+        animation: none;
+        background: none;
+        color: var(--studio-muted);
+    }
 }
