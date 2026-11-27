@@ -1261,7 +1261,9 @@ export function StageStoryboard({ pauseAutoSave = false }: { pauseAutoSave?: boo
     // Save shot edits from modal
     const handleSaveEditModal = async () => {
         try {
-            const values = await editForm.validateFields();
+            await editForm.validateFields();
+            // 保留未显示为表单项的构图、风格等镜头字段。
+            const values: ComicDramaShotInput = editForm.getFieldsValue(true);
             setSavingShot(true);
             await saveShot(values);
             message.success(translate("comicDrama.settingsUpdatedForShotCount", { value0: activeShot?.shotNumber }));

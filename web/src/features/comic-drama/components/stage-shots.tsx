@@ -378,7 +378,9 @@ export function StageShots() {
     // Save shot：镜头字段先落库，最终提示词有改动时另存为新采用版本，视频生成读到的就是这里的内容。
     const handleSaveShot = async () => {
         try {
-            const values = await shotForm.validateFields();
+            await shotForm.validateFields();
+            // 校验结果仅含注册字段，完整读取以保留镜头来源和关联资产版本。
+            const values: ComicDramaShotInput = shotForm.getFieldsValue(true);
             const currentPrompt = editingShot ? promptDraftSource : null;
             const nextPrompt = promptDraft.trim();
             if (!nextPrompt && currentPrompt) {
